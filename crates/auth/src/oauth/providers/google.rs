@@ -78,7 +78,7 @@ impl GoogleOAuthProvider {
     pub fn generate_authorization_url(&self, pkce: &PkceChallenge) -> String {
         let scope_string = self.scopes.join(" ");
 
-        let mut params = vec![
+        let params = vec![
             ("client_id", self.client_id.as_str()),
             ("redirect_uri", self.redirect_uri.as_str()),
             ("response_type", "code"),

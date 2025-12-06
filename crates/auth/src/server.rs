@@ -1,4 +1,7 @@
 use crate::{
+    admin::{
+        delete_user, get_audit_logs, get_user_detail, impersonate_user, list_users, update_user,
+    },
     api_keys::{ApiKey, ApiKeyManager, CreateApiKeyRequest},
     error::{AuthError, Result},
     jwt::JwtManager,
@@ -6,9 +9,17 @@ use crate::{
     middleware::{RateLimitConfig, RateLimitMiddleware, extract_user_context},
     oauth::{
         device::{DeviceAuthorizationResponse, DeviceCode},
-        handlers::{google_authorize, google_callback},
+        handlers::{apple_authorize, apple_callback, google_authorize, google_callback},
         pkce::{AuthorizationCode, PkceChallenge},
         OAuthConfig, OAuthManager,
+    },
+    parental::{
+        update_parental_controls, verify_parental_pin, ParentalControlsState,
+    },
+    password_reset::{ForgotPasswordRequest, ForgotPasswordResponse, PasswordResetToken, ResetPasswordRequest, ResetPasswordResponse, PasswordValidator},
+    profile::{
+        delete_current_user, get_current_user, update_current_user, upload_avatar,
+        handlers::ProfileState, ProfileStorage,
     },
     rbac::RbacManager,
     scopes::ScopeManager,
@@ -16,6 +27,7 @@ use crate::{
     storage::AuthStorage,
     token::TokenManager,
     token_family::TokenFamilyManager,
+    user::{login, register, PasswordHasher, PostgresUserRepository, UserHandlerState},
 };
 use actix_web::{
     delete, get, post,
@@ -37,6 +49,7 @@ pub struct AppState {
     pub token_family_manager: Arc<TokenFamilyManager>,
     pub mfa_manager: Option<Arc<MfaManager>>,
     pub api_key_manager: Option<Arc<ApiKeyManager>>,
+    pub email_manager: Option<Arc<crate::email::EmailManager>>,
 }
 
 // ============================================================================
@@ -715,6 +728,116 @@ async fn mfa_challenge(
 }
 
 // ============================================================================
+// Password Reset Endpoints
+// ============================================================================
+
+#[post("/api/v1/auth/password/forgot")]
+async fn forgot_password(
+    req: web::Json<ForgotPasswordRequest>,
+    state: Data<AppState>,
+    db_pool: Data<sqlx::PgPool>,
+) -> Result<impl Responder> {
+    use crate::user::{PostgresUserRepository, UserRepository};
+
+    let user_repo = PostgresUserRepository::new(db_pool.get_ref().clone());
+
+    // Check rate limit
+    let remaining = state.storage.check_password_reset_rate_limit(&req.email).await?;
+    if remaining == 0 {
+        // Return success even when rate limited to prevent enumeration
+        return Ok(HttpResponse::Ok().json(ForgotPasswordResponse {
+            message: "If an account exists with this email, a password reset link has been sent.".to_string(),
+        }));
+    }
+
+    // Find user by email
+    let user = user_repo.find_by_email(&req.email).await?;
+
+    // Always return success to prevent email enumeration
+    if let Some(user) = user {
+        // Generate reset token
+        let reset_token = PasswordResetToken::new(user.id.to_string(), user.email.clone());
+
+        // Store token in Redis
+        state.storage.store_password_reset_token(&reset_token.token, &reset_token).await?;
+
+        // Send password reset email
+        if let Some(email_manager) = &state.email_manager {
+            if let Err(e) = email_manager.send_password_reset_email(user.email.clone(), reset_token.token.clone()).await {
+                tracing::error!("Failed to send password reset email: {}", e);
+                // Continue anyway - don't expose email sending failures to prevent enumeration
+            }
+        } else {
+            tracing::warn!("Email manager not configured, password reset email not sent");
+            tracing::debug!("Reset token for {}: {}", user.email, reset_token.token);
+        }
+
+        tracing::info!("Password reset requested for user: {}", user.email);
+    }
+
+    Ok(HttpResponse::Ok().json(ForgotPasswordResponse {
+        message: "If an account exists with this email, a password reset link has been sent.".to_string(),
+    }))
+}
+
+#[post("/api/v1/auth/password/reset")]
+async fn reset_password(
+    req: web::Json<ResetPasswordRequest>,
+    state: Data<AppState>,
+    db_pool: Data<sqlx::PgPool>,
+) -> Result<impl Responder> {
+    use crate::user::{PasswordHasher, PostgresUserRepository, UserRepository};
+
+    // Validate new password
+    PasswordValidator::validate(&req.new_password)?;
+
+    // Get reset token from Redis
+    let reset_token = state.storage.get_password_reset_token(&req.token).await?
+        .ok_or(AuthError::InvalidToken("Invalid or expired reset token".to_string()))?;
+
+    // Check if token is expired
+    if reset_token.is_expired() {
+        state.storage.delete_password_reset_token(&req.token).await?;
+        return Err(AuthError::InvalidToken("Reset token expired".to_string()));
+    }
+
+    let user_repo = PostgresUserRepository::new(db_pool.get_ref().clone());
+
+    // Parse user_id
+    let user_id = Uuid::parse_str(&reset_token.user_id)
+        .map_err(|e| AuthError::Internal(format!("Invalid user ID: {}", e)))?;
+
+    // Hash new password
+    let new_password_hash = PasswordHasher::hash_password(&req.new_password)?;
+
+    // Update password in database
+    user_repo.update_password(user_id, &new_password_hash).await?;
+
+    // Delete reset token (single-use)
+    state.storage.delete_password_reset_token(&req.token).await?;
+
+    // Invalidate all existing sessions for this user
+    state.storage.delete_user_sessions(&reset_token.user_id).await?;
+
+    // Send password changed notification email
+    if let Some(email_manager) = &state.email_manager {
+        if let Err(e) = email_manager.send_password_changed_notification(reset_token.email.clone()).await {
+            tracing::error!("Failed to send password changed notification: {}", e);
+            // Continue anyway - password was already changed successfully
+        }
+    } else {
+        tracing::warn!("Email manager not configured, password changed notification not sent");
+    }
+
+    tracing::info!("Password reset successful for user: {}", reset_token.email);
+
+    Ok(HttpResponse::Ok().json(ResetPasswordResponse {
+        message: "Password has been reset successfully. All sessions have been invalidated.".to_string(),
+    }))
+}
+
+
+// ============================================================================
 // Server Initialization
 // ============================================================================
 
@@ -729,7 +852,21 @@ pub async fn start_server(
     rate_limit_config: RateLimitConfig,
     mfa_manager: Option<Arc<MfaManager>>,
     api_key_manager: Option<Arc<ApiKeyManager>>,
+    email_manager: Option<Arc<crate::email::EmailManager>>,
+    db_pool: sqlx::PgPool,
 ) -> std::io::Result<()> {
+    let require_email_verification = std::env::var("REQUIRE_EMAIL_VERIFICATION")
+        .unwrap_or_else(|_| "false".to_string())
+        .parse::<bool>()
+        .unwrap_or(false);
+
+    let user_handler_state = Data::new(UserHandlerState {
+        user_repository: Arc::new(PostgresUserRepository::new(db_pool.clone())),
+        password_hasher: Arc::new(PasswordHasher::new()),
+        jwt_manager: jwt_manager.clone(),
+        require_email_verification,
+    });
+
     let app_state = Data::new(AppState {
         jwt_manager,
         session_manager,
@@ -740,14 +877,34 @@ pub async fn start_server(
         token_family_manager,
         mfa_manager,
         api_key_manager,
+        email_manager,
+    });
+
+    let profile_state = Data::new(ProfileState {
+        storage: Arc::new(ProfileStorage::new(db_pool.clone())),
+        upload_dir: std::env::var("AVATAR_UPLOAD_DIR")
+            .unwrap_or_else(|_| "/tmp/avatars".to_string()),
+    });
+
+    let parental_state = Data::new(ParentalControlsState {
+        db_pool: db_pool.clone(),
+        redis_client: redis_client.clone(),
+        jwt_secret: std::env::var("PARENTAL_PIN_JWT_SECRET")
+            .unwrap_or_else(|_| "default-parental-pin-secret-change-in-production".to_string()),
     });
 
     tracing::info!("Starting auth service on {}", bind_address);
+
+    let db_pool_data = Data::new(db_pool);
 
     HttpServer::new(move || {
         App::new()
             .wrap(RateLimitMiddleware::new(redis_client.clone(), rate_limit_config.clone()))
             .app_data(app_state.clone())
+            .app_data(db_pool_data.clone())
+            .app_data(user_handler_state.clone())
+            .app_data(profile_state.clone())
+            .app_data(parental_state.clone())
             .service(health_check)
             .service(authorize)
             .service(token_exchange)
@@ -757,12 +914,30 @@ pub async fn start_server(
             .service(device_poll)
             .service(google_authorize)
             .service(google_callback)
+            .service(apple_authorize)
+            .service(apple_callback)
             .service(create_api_key)
             .service(list_api_keys)
             .service(revoke_api_key)
             .service(mfa_enroll)
             .service(mfa_verify)
             .service(mfa_challenge)
+            .service(list_users)
+            .service(get_user_detail)
+            .service(update_user)
+            .service(delete_user)
+            .service(impersonate_user)
+            .service(get_audit_logs)
+            .service(register)
+            .service(login)
+            .service(get_current_user)
+            .service(update_current_user)
+            .service(delete_current_user)
+            .service(upload_avatar)
+            .service(forgot_password)
+            .service(reset_password)
+            .service(update_parental_controls)
+            .service(verify_parental_pin)
     })
     .bind(bind_address)?
     .run()

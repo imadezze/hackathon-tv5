@@ -1,5 +1,41 @@
 use serde::{Deserialize, Serialize};
 
+/// Content rating for parental controls
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum ContentRating {
+    G = 0,
+    PG = 1,
+    #[serde(rename = "PG-13")]
+    PG13 = 2,
+    R = 3,
+    #[serde(rename = "NC-17")]
+    NC17 = 4,
+}
+
+impl ContentRating {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_uppercase().as_str() {
+            "G" => Some(ContentRating::G),
+            "PG" => Some(ContentRating::PG),
+            "PG-13" | "PG13" => Some(ContentRating::PG13),
+            "R" => Some(ContentRating::R),
+            "NC-17" | "NC17" => Some(ContentRating::NC17),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ContentRating::G => "G",
+            ContentRating::PG => "PG",
+            ContentRating::PG13 => "PG-13",
+            ContentRating::R => "R",
+            ContentRating::NC17 => "NC-17",
+        }
+    }
+}
+
 /// Search filters
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchFilters {
@@ -14,6 +50,12 @@ pub struct SearchFilters {
 
     /// Rating range filter (min, max)
     pub rating_range: Option<(f32, f32)>,
+
+    /// Content rating limit for parental controls
+    pub content_rating_limit: Option<ContentRating>,
+
+    /// Blocked genres for parental controls
+    pub blocked_genres: Vec<String>,
 }
 
 impl SearchFilters {
@@ -23,6 +65,8 @@ impl SearchFilters {
             && self.platforms.is_empty()
             && self.year_range.is_none()
             && self.rating_range.is_none()
+            && self.content_rating_limit.is_none()
+            && self.blocked_genres.is_empty()
     }
 
     /// Build SQL WHERE clause for filters
@@ -66,6 +110,25 @@ impl SearchFilters {
             ));
         }
 
+        // Content rating filter (parental controls)
+        if let Some(rating_limit) = self.content_rating_limit {
+            let rating_value = rating_limit as i32;
+            conditions.push(format!(
+                "content_rating_value <= {}",
+                rating_value
+            ));
+        }
+
+        // Blocked genres filter (parental controls)
+        if !self.blocked_genres.is_empty() {
+            conditions.push(format!("NOT (genres && ARRAY[{}]::text[])",
+                self.blocked_genres.iter()
+                    .map(|g| format!("'{}'", g))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
         let clause = if conditions.is_empty() {
             "1=1".to_string()
         } else {
@@ -98,6 +161,24 @@ impl SearchFilters {
         // Rating filter
         if self.rating_range.is_some() {
             selectivity *= 0.5;
+        }
+
+        // Content rating filter (parental controls)
+        if let Some(rating) = self.content_rating_limit {
+            // Stricter ratings are more selective
+            let rating_selectivity = match rating {
+                ContentRating::G => 0.2,
+                ContentRating::PG => 0.4,
+                ContentRating::PG13 => 0.6,
+                ContentRating::R => 0.8,
+                ContentRating::NC17 => 1.0,
+            };
+            selectivity *= rating_selectivity;
+        }
+
+        // Blocked genres
+        if !self.blocked_genres.is_empty() {
+            selectivity *= 0.7; // Reduces content by ~30%
         }
 
         selectivity

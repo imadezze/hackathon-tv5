@@ -46,6 +46,22 @@ pub trait ContentRepository: Send + Sync {
 
     /// Update quality score for content
     async fn update_quality_score(&self, content_id: Uuid, quality_score: f64) -> Result<()>;
+
+    /// Find low quality content below threshold
+    async fn find_low_quality_content(
+        &self,
+        threshold: f32,
+        limit: i64,
+    ) -> Result<Vec<LowQualityContentItem>>;
+}
+
+/// Low quality content item for quality reports
+#[derive(Debug, Clone)]
+pub struct LowQualityContentItem {
+    pub content_id: Uuid,
+    pub title: String,
+    pub quality_score: f32,
+    pub content: CanonicalContent,
 }
 
 /// Content expiring soon
@@ -646,6 +662,143 @@ impl ContentRepository for PostgresContentRepository {
         .context("Failed to update quality score")?;
 
         Ok(())
+    }
+
+    async fn find_low_quality_content(
+        &self,
+        threshold: f32,
+        limit: i64,
+    ) -> Result<Vec<LowQualityContentItem>> {
+        // Query for content with quality_score below threshold
+        let results = sqlx::query_as::<_, (
+            Uuid,
+            String,
+            String,
+            String,
+            Option<String>,
+            String,
+            Option<i32>,
+            Option<i32>,
+            Option<String>,
+            Option<f64>,
+            f64,
+            DateTime<Utc>,
+        )>(
+            r#"
+            SELECT
+                c.id,
+                c.title,
+                c.content_type,
+                COALESCE(c.original_title, c.title) as original_title,
+                c.overview,
+                COALESCE(pi.platform, 'unknown') as platform,
+                EXTRACT(YEAR FROM c.release_date)::integer as release_year,
+                c.runtime_minutes,
+                c.rating,
+                c.average_rating,
+                COALESCE(c.quality_score, 0.0) as quality_score,
+                c.last_updated
+            FROM content c
+            LEFT JOIN platform_ids pi ON pi.content_id = c.id
+            WHERE COALESCE(c.quality_score, 0.0) < $1
+            ORDER BY quality_score ASC
+            LIMIT $2
+            "#
+        )
+        .bind(threshold as f64)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to find low quality content")?;
+
+        let mut low_quality_items = Vec::new();
+
+        for (content_id, title, content_type, _original_title, overview, platform, release_year, runtime_minutes, rating, average_rating, quality_score, last_updated) in results {
+            // Fetch genres
+            let genres = sqlx::query_scalar::<_, String>(
+                "SELECT genre FROM content_genres WHERE content_id = $1"
+            )
+            .bind(content_id)
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default();
+
+            // Fetch external IDs
+            let external_ids_row = sqlx::query_as::<_, (Option<String>, Option<String>, Option<i32>, Option<i32>, Option<String>)>(
+                "SELECT eidr_id, imdb_id, tmdb_id, tvdb_id, gracenote_tms_id FROM external_ids WHERE content_id = $1"
+            )
+            .bind(content_id)
+            .fetch_optional(&self.pool)
+            .await
+            .unwrap_or(None);
+
+            let mut external_ids = std::collections::HashMap::new();
+            if let Some((eidr, imdb, tmdb, tvdb, gracenote)) = external_ids_row {
+                if let Some(e) = eidr { external_ids.insert("eidr".to_string(), e); }
+                if let Some(i) = imdb { external_ids.insert("imdb".to_string(), i); }
+                if let Some(t) = tmdb { external_ids.insert("tmdb".to_string(), t.to_string()); }
+                if let Some(t) = tvdb { external_ids.insert("tvdb".to_string(), t.to_string()); }
+                if let Some(g) = gracenote { external_ids.insert("gracenote".to_string(), g); }
+            }
+
+            // Fetch platform content ID
+            let platform_content_id = sqlx::query_scalar::<_, String>(
+                "SELECT platform_content_id FROM platform_ids WHERE content_id = $1 AND platform = $2"
+            )
+            .bind(content_id)
+            .bind(&platform)
+            .fetch_optional(&self.pool)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_else(|| content_id.to_string());
+
+            // Parse content type
+            let parsed_content_type = match content_type.as_str() {
+                "movie" => ContentType::Movie,
+                "series" => ContentType::Series,
+                "episode" => ContentType::Episode,
+                "short" => ContentType::Short,
+                "documentary" => ContentType::Documentary,
+                _ => ContentType::Movie,
+            };
+
+            // Build CanonicalContent
+            let canonical = CanonicalContent {
+                platform_content_id,
+                platform_id: platform,
+                entity_id: None,
+                title: title.clone(),
+                overview,
+                content_type: parsed_content_type,
+                release_year,
+                runtime_minutes,
+                genres,
+                external_ids,
+                availability: AvailabilityInfo {
+                    regions: vec![],
+                    subscription_required: false,
+                    purchase_price: None,
+                    rental_price: None,
+                    currency: None,
+                    available_from: None,
+                    available_until: None,
+                },
+                images: ImageSet::default(),
+                rating,
+                user_rating: average_rating,
+                embedding: None,
+                updated_at: last_updated,
+            };
+
+            low_quality_items.push(LowQualityContentItem {
+                content_id,
+                title,
+                quality_score: quality_score as f32,
+                content: canonical,
+            });
+        }
+
+        Ok(low_quality_items)
     }
 }
 

@@ -93,6 +93,21 @@ pub enum AuthError {
 
     #[error("Encryption error: {0}")]
     Encryption(String),
+
+    #[error("Email not verified")]
+    EmailNotVerified,
+
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+
+    #[error("Internal error: {0}")]
+    InternalError(String),
+
+    #[error("User not found")]
+    UserNotFound,
 }
 
 impl ResponseError for AuthError {
@@ -210,6 +225,36 @@ impl ResponseError for AuthError {
                 HttpResponse::Unauthorized().json(serde_json::json!({
                     "error": "invalid_backup_code",
                     "error_description": "Invalid backup code"
+                }))
+            }
+            AuthError::EmailNotVerified => {
+                HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "email_not_verified",
+                    "error_description": "Please verify your email address before logging in"
+                }))
+            }
+            AuthError::ValidationError(msg) => {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "validation_error",
+                    "error_description": msg
+                }))
+            }
+            AuthError::DatabaseError(msg) => {
+                HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "database_error",
+                    "error_description": "Database operation failed"
+                }))
+            }
+            AuthError::InternalError(msg) => {
+                HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "internal_error",
+                    "error_description": "Internal server error"
+                }))
+            }
+            AuthError::UserNotFound => {
+                HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "user_not_found",
+                    "error_description": "User not found"
                 }))
             }
             _ => {

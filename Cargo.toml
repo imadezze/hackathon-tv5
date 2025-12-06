@@ -11,6 +11,7 @@ members = [
     "crates/ingestion",
     "crates/playback",
     "crates/api",
+    "tests",
 ]
 resolver = "2"
 

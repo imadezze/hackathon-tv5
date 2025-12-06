@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod cache;
+pub mod catalog;
 pub mod config;
 pub mod embedding;
 pub mod intent;
@@ -8,6 +9,7 @@ pub mod server;
 
 pub use analytics::{SearchAnalytics, AnalyticsDashboard, PopularQuery, ZeroResultQuery};
 pub use cache::{CacheError, CacheStats, RedisCache};
+pub use catalog::{CatalogService, CatalogState, CreateContentRequest, UpdateContentRequest, AvailabilityUpdate, ContentResponse};
 pub use config::DiscoveryConfig;
 pub use embedding::EmbeddingService;
 pub use intent::{IntentParser, ParsedIntent};

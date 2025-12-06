@@ -21,7 +21,9 @@
 //! - `retry`: Exponential backoff retry utilities
 //! - `pagination`: Pagination utilities for API endpoints
 //! - `shutdown`: Graceful shutdown coordinator
+//! - `audit`: Audit logging system for tracking user actions and system events
 
+pub mod audit;
 pub mod config;
 pub mod database;
 pub mod error;
@@ -42,6 +44,7 @@ pub mod validation;
 mod tests;
 
 // Re-export commonly used types
+pub use audit::{AuditAction, AuditError, AuditEvent, AuditFilter, AuditLogger, PostgresAuditLogger};
 pub use config::{
     ConfigLoader, DatabaseConfig as ConfigDatabaseConfig, RedisConfig, ServiceConfig,
     load_dotenv,

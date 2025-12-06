@@ -1,0 +1,53 @@
+[package]
+name = "media-gateway-tests"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal crates (dev dependencies for integration testing)
+media-gateway-core = { path = "../crates/core" }
+# media-gateway-auth = { path = "../crates/auth" }  # Temporarily disabled due to compilation errors
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Cache
+redis = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Identifiers
+uuid = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Date/Time
+chrono = { workspace = true }
+
+[lib]
+name = "media_gateway_tests"
+path = "src/lib.rs"
+
+[[test]]
+name = "auth_tests"
+path = "src/auth_tests.rs"
+harness = true
+
+[[test]]
+name = "search_tests"
+path = "src/search_tests.rs"
+harness = true
+
+[[test]]
+name = "playback_tests"
+path = "src/playback_tests.rs"
+harness = true

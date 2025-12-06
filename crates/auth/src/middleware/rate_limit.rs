@@ -25,6 +25,10 @@ pub struct RateLimitConfig {
     pub authorize_endpoint_limit: u32,
     /// Rate limit for /auth/revoke endpoint (requests per minute)
     pub revoke_endpoint_limit: u32,
+    /// Rate limit for /auth/register endpoint (5 requests per hour per IP)
+    pub register_endpoint_limit: u32,
+    /// Rate limit for /auth/login endpoint (requests per minute)
+    pub login_endpoint_limit: u32,
     /// Secret for internal service bypass (from X-Internal-Service header)
     pub internal_service_secret: Option<String>,
 }
@@ -36,6 +40,8 @@ impl Default for RateLimitConfig {
             device_endpoint_limit: 5,
             authorize_endpoint_limit: 20,
             revoke_endpoint_limit: 10,
+            register_endpoint_limit: 5,  // 5 registrations per hour per IP
+            login_endpoint_limit: 10,    // 10 login attempts per minute per IP
             internal_service_secret: None,
         }
     }
@@ -47,12 +53,16 @@ impl RateLimitConfig {
         device_limit: u32,
         authorize_limit: u32,
         revoke_limit: u32,
+        register_limit: u32,
+        login_limit: u32,
     ) -> Self {
         Self {
             token_endpoint_limit: token_limit,
             device_endpoint_limit: device_limit,
             authorize_endpoint_limit: authorize_limit,
             revoke_endpoint_limit: revoke_limit,
+            register_endpoint_limit: register_limit,
+            login_endpoint_limit: login_limit,
             internal_service_secret: None,
         }
     }
@@ -63,15 +73,22 @@ impl RateLimitConfig {
     }
 
     /// Get rate limit for a specific endpoint path
-    pub fn get_limit_for_path(&self, path: &str) -> Option<u32> {
-        if path.contains("/auth/token") {
-            Some(self.token_endpoint_limit)
+    /// Returns (limit, window_in_seconds)
+    pub fn get_limit_for_path(&self, path: &str) -> Option<(u32, u64)> {
+        if path.contains("/auth/register") {
+            // 5 requests per hour (3600 seconds)
+            Some((self.register_endpoint_limit, 3600))
+        } else if path.contains("/auth/login") {
+            // 10 requests per minute (60 seconds)
+            Some((self.login_endpoint_limit, 60))
+        } else if path.contains("/auth/token") {
+            Some((self.token_endpoint_limit, 60))
         } else if path.contains("/auth/device") {
-            Some(self.device_endpoint_limit)
+            Some((self.device_endpoint_limit, 60))
         } else if path.contains("/auth/authorize") {
-            Some(self.authorize_endpoint_limit)
+            Some((self.authorize_endpoint_limit, 60))
         } else if path.contains("/auth/revoke") {
-            Some(self.revoke_endpoint_limit)
+            Some((self.revoke_endpoint_limit, 60))
         } else {
             None
         }
@@ -123,14 +140,14 @@ impl RateLimitMiddleware {
         false
     }
 
-    /// Get current window start timestamp (60-second windows)
-    fn get_window_start() -> u64 {
+    /// Get current window start timestamp
+    fn get_window_start(window_seconds: u64) -> u64 {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        // Round down to nearest 60-second window
-        (now / 60) * 60
+        // Round down to nearest window
+        (now / window_seconds) * window_seconds
     }
 
     /// Check rate limit using sliding window algorithm
@@ -139,6 +156,7 @@ impl RateLimitMiddleware {
         endpoint: &str,
         client_id: &str,
         limit: u32,
+        window_seconds: u64,
     ) -> Result<(bool, u32, u64)> {
         let mut conn = redis_client
             .get_multiplexed_async_connection()
@@ -147,7 +165,7 @@ impl RateLimitMiddleware {
                 AuthError::Internal(format!("Redis connection error: {}", e))
             })?;
 
-        let window_start = Self::get_window_start();
+        let window_start = Self::get_window_start(window_seconds);
         let key = format!("rate_limit:{}:{}:{}", endpoint, client_id, window_start);
 
         // Increment counter
@@ -155,15 +173,20 @@ impl RateLimitMiddleware {
             AuthError::Internal(format!("Redis INCR error: {}", e))
         })?;
 
-        // Set expiration on first increment (120 seconds to cover current + previous window)
+        // Set expiration on first increment (2x window to cover current + previous window)
         if count == 1 {
-            let _: () = conn.expire(&key, 120).await.map_err(|e| {
+            let ttl = (window_seconds * 2) as i64;
+            let _: () = conn.expire(&key, ttl).await.map_err(|e| {
                 AuthError::Internal(format!("Redis EXPIRE error: {}", e))
             })?;
         }
 
         let allowed = count <= limit;
-        let retry_after = if allowed { 0 } else { 60 - (window_start % 60) };
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let retry_after = if allowed { 0 } else { window_seconds - (now % window_seconds) };
 
         Ok((allowed, count, retry_after))
     }
@@ -241,8 +264,8 @@ where
             }
 
             // Get rate limit for this endpoint
-            let limit = match config.get_limit_for_path(path) {
-                Some(l) => l,
+            let (limit, window_seconds) = match config.get_limit_for_path(path) {
+                Some((l, w)) => (l, w),
                 None => {
                     // No rate limit configured for this endpoint
                     return service.call(req).await;
@@ -255,7 +278,7 @@ where
 
             // Check rate limit
             let (allowed, current_count, retry_after) =
-                RateLimitMiddleware::check_rate_limit(&redis_client, &endpoint, &client_id, limit)
+                RateLimitMiddleware::check_rate_limit(&redis_client, &endpoint, &client_id, limit, window_seconds)
                     .await
                     .map_err(|e| Error::from(e))?;
 
@@ -334,17 +357,22 @@ mod tests {
     #[actix_web::test]
     async fn test_get_limit_for_path() {
         let config = RateLimitConfig::default();
-        assert_eq!(config.get_limit_for_path("/auth/token"), Some(10));
-        assert_eq!(config.get_limit_for_path("/auth/device"), Some(5));
-        assert_eq!(config.get_limit_for_path("/auth/authorize"), Some(20));
-        assert_eq!(config.get_limit_for_path("/auth/revoke"), Some(10));
+        assert_eq!(config.get_limit_for_path("/auth/register"), Some((5, 3600)));
+        assert_eq!(config.get_limit_for_path("/auth/login"), Some((10, 60)));
+        assert_eq!(config.get_limit_for_path("/auth/token"), Some((10, 60)));
+        assert_eq!(config.get_limit_for_path("/auth/device"), Some((5, 60)));
+        assert_eq!(config.get_limit_for_path("/auth/authorize"), Some((20, 60)));
+        assert_eq!(config.get_limit_for_path("/auth/revoke"), Some((10, 60)));
         assert_eq!(config.get_limit_for_path("/health"), None);
     }
 
     #[actix_web::test]
     async fn test_window_start_calculation() {
-        let window_start = RateLimitMiddleware::get_window_start();
-        assert_eq!(window_start % 60, 0);
+        let window_start_60 = RateLimitMiddleware::get_window_start(60);
+        assert_eq!(window_start_60 % 60, 0);
+
+        let window_start_3600 = RateLimitMiddleware::get_window_start(3600);
+        assert_eq!(window_start_3600 % 3600, 0);
     }
 
     #[actix_web::test]
@@ -362,6 +390,8 @@ mod tests {
             device_endpoint_limit: 5,
             authorize_endpoint_limit: 20,
             revoke_endpoint_limit: 10,
+            register_endpoint_limit: 5,
+            login_endpoint_limit: 10,
             internal_service_secret: None,
         };
 
@@ -414,6 +444,8 @@ mod tests {
             device_endpoint_limit: 5,
             authorize_endpoint_limit: 20,
             revoke_endpoint_limit: 10,
+            register_endpoint_limit: 5,
+            login_endpoint_limit: 10,
             internal_service_secret: Some("super-secret-key".to_string()),
         };
 
@@ -455,6 +487,8 @@ mod tests {
             device_endpoint_limit: 5,
             authorize_endpoint_limit: 20,
             revoke_endpoint_limit: 10,
+            register_endpoint_limit: 5,
+            login_endpoint_limit: 10,
             internal_service_secret: None,
         };
 

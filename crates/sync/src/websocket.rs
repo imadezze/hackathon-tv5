@@ -169,6 +169,16 @@ impl Actor for SyncWebSocket {
     }
 }
 
+/// Handler for BroadcastMessage from registry
+impl Handler<crate::ws::BroadcastMessage> for SyncWebSocket {
+    type Result = ();
+
+    fn handle(&mut self, msg: crate::ws::BroadcastMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Send JSON message to WebSocket client
+        ctx.text(msg.0);
+    }
+}
+
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SyncWebSocket {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {

@@ -352,6 +352,23 @@ impl HybridSearchService {
 
     /// Reciprocal Rank Fusion (RRF) algorithm
     /// Merges results from multiple search strategies
+    ///
+    /// # Quality Score Integration Point
+    ///
+    /// To integrate content quality scoring into search ranking:
+    ///
+    /// 1. Add quality_score field to ContentSummary struct
+    /// 2. Apply quality boost factor in this function:
+    ///    ```rust
+    ///    let quality_boost = result.content.quality_score * quality_weight;
+    ///    let final_score = rrf_score * (1.0 + quality_boost);
+    ///    ```
+    /// 3. Configure quality_weight in DiscoveryConfig (recommended: 0.1-0.3)
+    /// 4. Quality scores come from ingestion::QualityScorer scoring
+    ///
+    /// This ensures high-quality content (complete metadata, fresh data,
+    /// external ratings) ranks higher in search results while maintaining
+    /// relevance-based ranking.
     fn reciprocal_rank_fusion(
         &self,
         vector_results: Vec<SearchResult>,

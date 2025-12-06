@@ -43,6 +43,8 @@ urlencoding = "2.1"
 totp-rs = { version = "5.4", features = ["otpauth", "qr"] }
 qrcode = "0.14"
 aes-gcm = "0.10"
+actix-multipart = "0.6"
+async-trait = "0.1"
 
 [dev-dependencies]
 wiremock = "0.6"

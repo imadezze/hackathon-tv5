@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 media-gateway-core = { workspace = true }
+media-gateway-ingestion = { path = "../ingestion" }
 actix-web = { workspace = true }
 actix-rt = { workspace = true }
 actix-cors = { workspace = true }
@@ -41,7 +42,9 @@ tantivy = "0.22"
 jsonwebtoken = "9.2"
 futures = "0.3"
 chrono = { workspace = true }
+rdkafka = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
 wiremock = { workspace = true }
+tempfile = "3.23"

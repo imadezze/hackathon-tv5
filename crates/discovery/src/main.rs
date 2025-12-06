@@ -7,7 +7,8 @@
 use actix_web::{web, App, HttpServer, HttpResponse};
 use tracing::info;
 use std::sync::Arc;
-use media_gateway_discovery::{config, server};
+use media_gateway_discovery::{catalog, config, server};
+use qdrant_client::Qdrant;
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,16 +29,61 @@ async fn main() -> anyhow::Result<()> {
     // Initialize service components
     let search_service = media_gateway_discovery::init_service(config.clone()).await?;
 
+    // Initialize Qdrant client for catalog service
+    let qdrant_client = Arc::new(
+        Qdrant::from_url(&config.vector.qdrant_url)
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to create Qdrant client: {}", e))?
+    );
+
+    // Initialize database pool for catalog service
+    let db_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(config.database.max_connections)
+        .acquire_timeout(std::time::Duration::from_secs(config.database.connect_timeout_sec))
+        .connect(&config.database.url)
+        .await?;
+
+    // Initialize catalog service
+    let mut catalog_service = catalog::CatalogService::new(
+        db_pool,
+        qdrant_client,
+        config.vector.collection_name.clone(),
+        config.embedding.api_key.clone(),
+        config.embedding.api_url.clone(),
+    );
+
+    // Add Kafka support if configured
+    if let Ok(kafka_brokers) = std::env::var("KAFKA_BROKERS") {
+        info!("Enabling Kafka event publishing to {}", kafka_brokers);
+        catalog_service = catalog_service.with_kafka(&kafka_brokers)?;
+    }
+
+    let catalog_service = Arc::new(catalog_service);
+
+    // Get JWT secret from environment
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| {
+            tracing::warn!("JWT_SECRET not set, using default (INSECURE for production)");
+            "default-jwt-secret-change-in-production".to_string()
+        });
+
     // Create application state
     let app_state = web::Data::new(server::AppState {
         config: config.clone(),
         search_service,
     });
 
+    // Create catalog state
+    let catalog_state = web::Data::new(catalog::CatalogState {
+        catalog_service,
+        jwt_secret,
+    });
+
     // Start HTTP server with routes
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
+            .app_data(catalog_state.clone())
             .route("/health", web::get().to(health_check))
             .route("/ready", web::get().to(readiness_check))
             .configure(server::configure_routes)

@@ -1,7 +1,7 @@
 //! Main ingestion pipeline with scheduling and orchestration
 
 use crate::{
-    normalizer::{PlatformNormalizer, RawContent},
+    normalizer::{PlatformNormalizer, RawContent, CanonicalContent},
     entity_resolution::EntityResolver,
     genre_mapping::GenreMapper,
     embedding::EmbeddingGenerator,

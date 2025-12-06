@@ -19,6 +19,9 @@ pub mod server;
 pub mod sync;
 pub mod websocket;
 
+// WebSocket module for broadcasting
+pub mod ws;
+
 pub use command_router::{Command, CommandAck, CommandRouter, DeviceCommandMessage};
 pub use crdt::{HLCTimestamp, HybridLogicalClock, LWWRegister, ORSet, ORSetDelta, ORSetOperation, PlaybackPosition, PlaybackState};
 pub use device::{
