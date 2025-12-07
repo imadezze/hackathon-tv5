@@ -79,23 +79,24 @@ export async function parseSearchQuery(query: string): Promise<SemanticSearchQue
     const { object: intent } = await generateObject({
       model: google('gemini-2.5-flash'),
       schema: SearchIntentSchema,
-      prompt: `Analyze this movie/TV show search query and extract the user's intent:
+      maxTokens: 500, // Limit response size to prevent runaway generation
+      prompt: `Analyze this movie/TV show search query and extract the user's intent concisely.
 
 Query: "${query}"
 
-Extract:
-- Mood: What emotional experience are they seeking?
-- Themes: What story themes are they interested in?
-- Pacing: Do they want something slow-burn, fast-paced, or in between?
-- Era: What time period setting do they prefer?
-- Setting: Where should the story take place?
-- Similar to: Are they referencing specific movies/shows?
-- Avoid: What elements should be avoided?
-- Genres: What genres fit this description?
-- Keywords: What are the key search terms?
-- Media type: Do they specifically want movies or TV shows?
+Extract only the most relevant information (limit each array to 3-5 items max):
+- mood: Emotional tone (e.g., ["exciting", "dark"])
+- themes: Story themes (e.g., ["redemption", "survival"])
+- pacing: "slow", "medium", or "fast"
+- era: Time period (e.g., "1980s", "modern")
+- setting: Physical setting (e.g., ["space", "urban"])
+- similar_to: Referenced movies/shows
+- avoid: Elements to avoid
+- genres: Matching genres (e.g., ["action", "sci-fi"])
+- keywords: Key search terms (max 5)
+- mediaType: "movie", "tv", or "all"
 
-Be specific and extract as much relevant information as possible.`,
+Return a concise, structured response. Keep all arrays short (3-5 items maximum).`,
     });
 
     // Convert genre names to IDs

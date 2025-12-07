@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
+    "pre-index": "tsx scripts/pre-index.ts",
+    "pre-index:full": "tsx scripts/pre-index.ts --full",
     "embed:sync": "tsx scripts/sync-embeddings.ts",
     "deploy": "gcloud run deploy media-discovery --source ."
   },
