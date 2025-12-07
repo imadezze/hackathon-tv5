@@ -83,10 +83,22 @@ Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
 
       agent.on('UserMessage', (data) => {
         console.log(`👤 User: "${data.text}"`);
+        // Update conversation in real-time
+        setConversation(prev => [...prev, {
+          role: 'user' as const,
+          content: data.text,
+          timestamp: Date.now(),
+        }]);
       });
 
       agent.on('AgentUtterance', (data) => {
         console.log(`🤖 Agent: "${data.text}"`);
+        // Update conversation in real-time
+        setConversation(prev => [...prev, {
+          role: 'assistant' as const,
+          content: data.text,
+          timestamp: Date.now(),
+        }]);
       });
 
       agent.on('AgentStateChange', (data) => {
@@ -114,10 +126,23 @@ Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
         setIsConnected(false);
         setStatus('Disconnected');
 
+        // Get final conversation from agent (more reliable than state)
+        const finalConversation = agent.getConversation();
+        console.log(`📝 Final conversation: ${finalConversation.length} messages`);
+
+        // Update state with final conversation
+        setConversation(finalConversation);
+
         // Auto-analyze when conversation ends
-        if (agent.getConversation().length > 0) {
-          setConversation(agent.getConversation());
-          analyzeAndRecommend();
+        // Pass conversation directly to avoid state sync issues
+        const userMessages = finalConversation.filter(m => m.role === 'user');
+        console.log(`👥 User messages: ${userMessages.length}`);
+
+        if (userMessages.length > 0) {
+          analyzeAndRecommend(finalConversation);
+        } else {
+          console.log('⚠️ No user messages to analyze');
+          setStatus('No conversation to analyze');
         }
       });
 
@@ -154,30 +179,46 @@ Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
 
       agentRef.current.stop();
       agentRef.current = null;
+
+      // Analyze preferences with final conversation
+      if (finalConversation.length > 0) {
+        const userMessages = finalConversation.filter(m => m.role === 'user');
+        if (userMessages.length > 0) {
+          analyzeAndRecommend(finalConversation);
+        }
+      }
     }
 
     setIsConnected(false);
-
-    // Analyze preferences
-    if (conversation.length > 0) {
-      analyzeAndRecommend();
-    }
   };
 
   /**
    * Analyze conversation and get recommendations
    */
-  const analyzeAndRecommend = async () => {
+  const analyzeAndRecommend = async (conversationData?: ConversationMessage[]) => {
     setIsAnalyzing(true);
     setStatus('Analyzing your preferences...');
 
     try {
-      const userResponses = conversation
+      // Use provided conversation or fall back to state
+      const conversationToAnalyze = conversationData || conversation;
+
+      const userResponses = conversationToAnalyze
         .filter(msg => msg.role === 'user')
         .map(msg => ({
           transcript: msg.content,
           timestamp: msg.timestamp,
         }));
+
+      console.log(`📊 Analyzing ${userResponses.length} user responses`);
+
+      // Check if we have user responses
+      if (userResponses.length === 0) {
+        console.log('⚠️ No user responses to analyze');
+        setStatus('No conversation to analyze');
+        setIsAnalyzing(false);
+        return;
+      }
 
       const response = await fetch('/api/voice-preferences', {
         method: 'POST',

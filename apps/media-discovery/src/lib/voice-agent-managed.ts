@@ -10,7 +10,7 @@ export interface VoiceAgentConfig {
   apiKey: string;
   systemPrompt: string;
   greeting: string;
-  llmProvider?: 'openai' | 'anthropic' | 'google' | 'groq';
+  llmProvider?: 'openai' | 'open_ai' | 'anthropic' | 'google' | 'groq';
   llmModel?: string;
   ttsVoice?: string;
 }
@@ -153,13 +153,14 @@ export class ManagedVoiceAgent {
         this.emit('UserMessage', { text: data.content });
       } else {
         this.emit('AgentUtterance', { text: data.content });
-      }
 
-      // Check if conversation should end
-      if (this.shouldEndConversation(message)) {
-        setTimeout(() => {
-          this.stop();
-        }, 3000);
+        // Only check for conversation end after agent speaks
+        // This allows agent to respond to the final user message
+        if (this.shouldEndConversation(message)) {
+          setTimeout(() => {
+            this.stop();
+          }, 3000);
+        }
       }
     });
 
@@ -440,6 +441,7 @@ registerProcessor('microphone-processor', MicrophoneProcessor);
 
   /**
    * Check if conversation should end
+   * Called ONLY after agent speaks, so agent can respond to final user message
    */
   private shouldEndConversation(message: ConversationMessage): boolean {
     if (message.role !== 'assistant') {
@@ -448,16 +450,13 @@ registerProcessor('microphone-processor', MicrophoneProcessor);
 
     const userMessages = this.conversation.filter(m => m.role === 'user');
 
-    // End after 7 user responses
-    if (userMessages.length >= 7) {
+    // End after agent responds to 8th user message (gives 7-8 questions total)
+    if (userMessages.length >= 8) {
+      console.log(`🏁 Conversation limit reached: ${userMessages.length} user messages`);
       return true;
     }
 
-    // Or if agent says goodbye
-    const content = message.content.toLowerCase();
-    return content.includes('great matches') ||
-           content.includes('goodbye') ||
-           content.includes('perfect!');
+    return false;
   }
 
   /**
@@ -498,6 +497,12 @@ registerProcessor('microphone-processor', MicrophoneProcessor);
    * Stop the voice agent
    */
   stop(): void {
+    // Prevent double-stop
+    if (this.state === 'idle' || !this.connection) {
+      console.log('⚠️ Agent already stopped');
+      return;
+    }
+
     console.log('🛑 Stopping voice agent...');
 
     this.stopKeepAlive();
