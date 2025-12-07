@@ -1,0 +1,27 @@
+{
+  "projectName": "devImad",
+  "teamName": "devImad",
+  "track": "multi-agent-systems",
+  "tools": {
+    "claudeCode": true,
+    "geminiCli": false,
+    "claudeFlow": true,
+    "agenticFlow": false,
+    "flowNexus": false,
+    "adk": true,
+    "googleCloudCli": true,
+    "vertexAi": true,
+    "ruvector": true,
+    "agentDb": true,
+    "agenticSynth": true,
+    "strangeLoops": true,
+    "sparc": true,
+    "lionpride": false,
+    "agenticFramework": false,
+    "openaiAgents": false
+  },
+  "mcpEnabled": true,
+  "discordLinked": true,
+  "initialized": true,
+  "createdAt": "2025-12-07T13:07:40.672Z"
+}

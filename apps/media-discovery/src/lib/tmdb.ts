@@ -7,7 +7,7 @@ import { TMDB } from 'tmdb-ts';
 import type { Movie, TVShow, MediaContent, Genre, SearchFilters } from '@/types/media';
 
 // Environment validation
-const TMDB_ACCESS_TOKEN = process.env.NEXT_PUBLIC_TMDB_ACCESS_TOKEN;
+const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN || process.env.NEXT_PUBLIC_TMDB_ACCESS_TOKEN;
 
 if (!TMDB_ACCESS_TOKEN) {
   console.warn('TMDB_ACCESS_TOKEN is not defined. TMDB API calls will fail.');

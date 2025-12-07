@@ -138,11 +138,21 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .DS_Store
-.devcontainer/
+# .devcontainer/
 
 # Rust build artifacts
 target/
 Cargo.lock
+
+
+# Removed Windows wrapper files per user request
+hive-mind-prompt-*.txt
+.claude/
+.agentic-qe/
+
+
+# Removed Windows wrapper files per user request
+hive-mind-prompt-*.txt
 
 # Claude Flow generated files
 .claude/settings.local.json
@@ -170,5 +180,3 @@ coordination/orchestration/*
 claude-flow
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
-.claude/
-.agentic-qe/

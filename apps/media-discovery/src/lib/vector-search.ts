@@ -81,32 +81,36 @@ export async function getContentEmbedding(text: string): Promise<Float32Array | 
       return cached.embedding;
     }
 
-    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    if (!OPENAI_API_KEY) {
-      console.warn('OpenAI API key not set, using mock embedding');
+    const GOOGLE_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+    if (!GOOGLE_API_KEY) {
+      console.warn('Google AI API key not set, using mock embedding');
       return generateMockEmbedding(text);
     }
 
-    console.log(`🔄 Generating embedding for: "${text.slice(0, 30)}..."`);
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    console.log(`🔄 Generating embedding with Google AI for: "${text.slice(0, 30)}..."`);
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=' + GOOGLE_API_KEY, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'text-embedding-3-small',
-        input: text,
-        dimensions: EMBEDDING_DIMENSIONS,
+        model: 'models/text-embedding-004',
+        content: {
+          parts: [{
+            text: text
+          }]
+        },
+        outputDimensionality: EMBEDDING_DIMENSIONS,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Google AI API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    const embedding = new Float32Array(data.data[0].embedding);
+    const embedding = new Float32Array(data.embedding.values);
 
     // Cache the result
     embeddingCache.set(cacheKey, { embedding, timestamp: Date.now() });

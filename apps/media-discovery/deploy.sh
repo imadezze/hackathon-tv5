@@ -40,12 +40,12 @@ case "${1:-help}" in
     gcloud secrets describe tmdb-access-token --project="${PROJECT_ID}" 2>/dev/null || \
       gcloud secrets create tmdb-access-token --project="${PROJECT_ID}"
 
-    gcloud secrets describe openai-api-key --project="${PROJECT_ID}" 2>/dev/null || \
-      gcloud secrets create openai-api-key --project="${PROJECT_ID}"
+    gcloud secrets describe google-ai-api-key --project="${PROJECT_ID}" 2>/dev/null || \
+      gcloud secrets create google-ai-api-key --project="${PROJECT_ID}"
 
     log_info "Setup complete! Add secret values with:"
     echo "  gcloud secrets versions add tmdb-access-token --data-file=- <<< 'YOUR_TOKEN'"
-    echo "  gcloud secrets versions add openai-api-key --data-file=- <<< 'YOUR_KEY'"
+    echo "  gcloud secrets versions add google-ai-api-key --data-file=- <<< 'YOUR_KEY'"
     ;;
 
   build)
@@ -83,7 +83,7 @@ case "${1:-help}" in
       --min-instances 0 \
       --max-instances 20 \
       --set-env-vars "NODE_ENV=production" \
-      --set-secrets "NEXT_PUBLIC_TMDB_ACCESS_TOKEN=tmdb-access-token:latest,OPENAI_API_KEY=openai-api-key:latest" \
+      --set-secrets "NEXT_PUBLIC_TMDB_ACCESS_TOKEN=tmdb-access-token:latest,TMDB_ACCESS_TOKEN=tmdb-access-token:latest,GOOGLE_GENERATIVE_AI_API_KEY=google-ai-api-key:latest" \
       --project="${PROJECT_ID}"
 
     URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format='value(status.url)' --project="${PROJECT_ID}")

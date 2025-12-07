@@ -1,40 +1,55 @@
-# Multi-stage build for AI Media Discovery Platform
+# Production Dockerfile for Media Discovery App
 # Optimized for Google Cloud Run deployment
 
-# Stage 1: Dependencies
-FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat
+# Use full node image (not slim) - includes Python and build tools pre-installed
+FROM node:20 AS base
+
+# ========================================
+# Dependencies Stage
+# ========================================
+FROM base AS deps
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+COPY package*.json ./
 
-# Stage 2: Builder
-FROM node:20-alpine AS builder
+# Install dependencies including dev dependencies for build
+RUN npm ci
+
+# ========================================
+# Builder Stage
+# ========================================
+FROM base AS builder
 WORKDIR /app
 
-# Copy dependencies
+# Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+
+# Copy application code
 COPY . .
 
-# Set environment for build
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV NODE_ENV production
+# Set environment to production
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Build the application
+# Build Next.js application
 RUN npm run build
 
-# Stage 3: Runner
-FROM node:20-alpine AS runner
+# ========================================
+# Runner Stage
+# ========================================
+FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Create data directory for ruvector
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 # Copy built application
 COPY --from=builder /app/public ./public
@@ -45,7 +60,7 @@ USER nextjs
 
 # Cloud Run uses PORT environment variable
 EXPOSE 8080
-ENV PORT 8080
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=8080
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
