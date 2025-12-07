@@ -5,7 +5,6 @@ use crate::pubnub::{
     DeviceMessage, MessageHandler, PubNubClient, SyncMessage as PubNubSyncMessage,
 };
 use crate::ws::registry::{ConnectionRegistry, SyncMessage, SyncMessageType};
-use chrono::Utc;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;

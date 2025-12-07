@@ -213,16 +213,16 @@ impl SessionManager {
         let value = serde_json::to_string(&session)
             .map_err(|e| SessionError::Serialization(e.to_string()))?;
 
-        conn.set_ex(&key, value, SESSION_TTL_SECS)
+        conn.set_ex::<_, _, ()>(&key, value, SESSION_TTL_SECS)
             .await
             .map_err(|e| SessionError::Storage(e.to_string()))?;
 
         // Also index by user for lookup
         let user_key = format!("user:{}:sessions", session.user_id);
-        conn.sadd(&user_key, session.id.to_string())
+        conn.sadd::<_, _, ()>(&user_key, session.id.to_string())
             .await
             .map_err(|e| SessionError::Storage(e.to_string()))?;
-        conn.expire(&user_key, SESSION_TTL_SECS as i64)
+        conn.expire::<_, ()>(&user_key, SESSION_TTL_SECS as i64)
             .await
             .map_err(|e| SessionError::Storage(e.to_string()))?;
 
@@ -314,7 +314,7 @@ impl SessionManager {
             SESSION_TTL_SECS
         };
 
-        conn.set_ex(&key, value, ttl)
+        conn.set_ex::<_, _, ()>(&key, value, ttl)
             .await
             .map_err(|e| SessionError::Storage(e.to_string()))?;
 
@@ -399,14 +399,14 @@ impl SessionManager {
             .map_err(|e| SessionError::Storage(e.to_string()))?;
 
         let key = format!("session:{}", session_id);
-        conn.del(&key)
+        conn.del::<_, ()>(&key)
             .await
             .map_err(|e| SessionError::Storage(e.to_string()))?;
 
         // Remove from user index and publish session ended event
         if let Some(s) = session {
             let user_key = format!("user:{}:sessions", s.user_id);
-            conn.srem(&user_key, session_id.to_string())
+            conn.srem::<_, _, ()>(&user_key, session_id.to_string())
                 .await
                 .map_err(|e| SessionError::Storage(e.to_string()))?;
 

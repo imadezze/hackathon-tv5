@@ -132,7 +132,8 @@ fn validate_token(token: &str) -> Result<TokenClaims, jsonwebtoken::errors::Erro
     // This should be replaced with proper validation in production
 
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "secret".to_string());
+    let secret = std::env::var("JWT_SECRET")
+        .expect("JWT_SECRET must be set - cannot start with default secret");
 
     let token_data = jsonwebtoken::decode::<TokenClaims>(
         token,

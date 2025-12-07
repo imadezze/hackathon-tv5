@@ -6,8 +6,6 @@ use crate::oauth::{
     pkce::{AuthorizationCode, PkceChallenge},
 };
 use redis::{aio::MultiplexedConnection, AsyncCommands, Client};
-use serde::{de::DeserializeOwned, Serialize};
-use std::time::Duration;
 
 /// TTL constants for different token types
 const PKCE_TTL_SECS: u64 = 600; // 10 minutes

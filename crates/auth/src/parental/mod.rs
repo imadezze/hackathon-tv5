@@ -9,7 +9,7 @@ pub use handlers::{update_parental_controls, verify_parental_pin, ParentalContro
 pub use verification::{VerifyPinRequest, VerifyPinResponse};
 
 use crate::error::AuthError;
-use chrono::{NaiveTime, Timelike};
+use chrono::NaiveTime;
 
 /// Check if current time is within allowed viewing window
 pub fn is_within_viewing_window(

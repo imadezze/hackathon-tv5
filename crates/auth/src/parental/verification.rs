@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AuthError;
-use crate::parental::controls::{get_parental_controls, ParentalControls};
+use crate::parental::controls::get_parental_controls;
 
 const VERIFICATION_DURATION_MINUTES: i64 = 5;
 const REDIS_KEY_PREFIX: &str = "parental_pin_verified";

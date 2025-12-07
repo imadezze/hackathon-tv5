@@ -1,6 +1,5 @@
 use actix_web::{patch, post, web, HttpRequest, HttpResponse, Responder};
 use serde::Serialize;
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::{AuthError, Result};
@@ -9,7 +8,7 @@ use crate::parental::controls::{
     get_parental_controls, set_parental_controls, ParentalControlsPublic,
     SetParentalControlsRequest, SetParentalControlsResponse,
 };
-use crate::parental::verification::{verify_pin, VerifyPinRequest, VerifyPinResponse};
+use crate::parental::verification::{verify_pin, VerifyPinRequest};
 
 /// Handler state for parental controls
 pub struct ParentalControlsState {

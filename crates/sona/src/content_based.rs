@@ -3,8 +3,8 @@
 //! Uses content features and embeddings to find similar items
 
 use anyhow::Result;
-use qdrant_client::prelude::*;
 use qdrant_client::qdrant::{Condition, FieldCondition, Filter, Match, SearchPoints};
+use qdrant_client::Qdrant;
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -12,13 +12,13 @@ use uuid::Uuid;
 /// Content-based recommendation engine
 pub struct ContentBasedEngine {
     pool: PgPool,
-    qdrant: QdrantClient,
+    qdrant: Qdrant,
     collection_name: String,
 }
 
 impl ContentBasedEngine {
     pub fn new(pool: PgPool, qdrant_url: &str, collection_name: String) -> Result<Self> {
-        let qdrant = QdrantClient::from_url(qdrant_url).build()?;
+        let qdrant = Qdrant::from_url(qdrant_url).build()?;
         Ok(Self {
             pool,
             qdrant,
@@ -89,7 +89,7 @@ impl ContentBasedEngine {
         // Search Qdrant for similar vectors
         let search_result = self
             .qdrant
-            .search_points(&SearchPoints {
+            .search_points(SearchPoints {
                 collection_name: self.collection_name.clone(),
                 vector: embedding,
                 filter,

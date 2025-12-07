@@ -1,6 +1,5 @@
 use crate::error::{AuthError, Result};
 use crate::oauth::pkce::PkceChallenge;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

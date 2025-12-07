@@ -16,6 +16,10 @@ async fn main() -> std::io::Result<()> {
         .json()
         .init();
 
+    // Validate JWT_SECRET is set before starting server
+    std::env::var("JWT_SECRET")
+        .expect("JWT_SECRET environment variable must be set - cannot start with default secret");
+
     info!("Starting API Gateway on port 8080");
 
     HttpServer::new(|| {

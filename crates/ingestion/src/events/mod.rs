@@ -8,18 +8,20 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
-/// Maximum number of retries for event publishing
-const MAX_RETRIES: u32 = 3;
+pub mod kafka_producer;
+pub mod metrics;
 
-/// Base retry delay in milliseconds
-const BASE_RETRY_DELAY_MS: u64 = 100;
+#[cfg(test)]
+mod mock;
 
-/// Default Kafka topic prefix if not configured
-const DEFAULT_TOPIC_PREFIX: &str = "media-gateway";
+#[cfg(test)]
+pub use mock::MockEventProducer;
+
+#[cfg(not(test))]
+pub use kafka_producer::KafkaEventProducer;
 
 /// Event streaming errors
 #[derive(Debug, thiserror::Error)]
@@ -339,6 +341,8 @@ pub struct KafkaConfig {
 impl KafkaConfig {
     /// Creates a new Kafka configuration from environment variables
     pub fn from_env() -> EventResult<Self> {
+        const DEFAULT_TOPIC_PREFIX: &str = "media-gateway";
+
         let brokers = env::var("KAFKA_BROKERS").unwrap_or_else(|_| "localhost:9092".to_string());
 
         let topic_prefix =
@@ -371,213 +375,6 @@ impl KafkaConfig {
     /// Gets the full topic name for an event type
     pub fn topic_for_event(&self, event_type: &str) -> String {
         format!("{}.{}", self.topic_prefix, event_type)
-    }
-}
-
-/// Mock event producer for testing and development
-pub struct MockEventProducer {
-    config: KafkaConfig,
-    published_events: Arc<tokio::sync::Mutex<Vec<ContentEvent>>>,
-}
-
-impl MockEventProducer {
-    /// Creates a new mock event producer
-    pub fn new(config: KafkaConfig) -> Self {
-        Self {
-            config,
-            published_events: Arc::new(tokio::sync::Mutex::new(Vec::new())),
-        }
-    }
-
-    /// Gets all published events (for testing)
-    pub async fn get_published_events(&self) -> Vec<ContentEvent> {
-        self.published_events.lock().await.clone()
-    }
-
-    /// Clears all published events (for testing)
-    pub async fn clear_events(&self) {
-        self.published_events.lock().await.clear();
-    }
-}
-
-#[async_trait::async_trait]
-impl EventProducer for MockEventProducer {
-    async fn publish_event(&self, event: ContentEvent) -> EventResult<()> {
-        let topic = self.config.topic_for_event(event.event_type());
-
-        info!(
-            content_id = %event.content_id(),
-            event_type = %event.event_type(),
-            correlation_id = %event.correlation_id(),
-            topic = %topic,
-            "Publishing event (mock)"
-        );
-
-        // Simulate serialization
-        let _payload = serde_json::to_string(&event)?;
-
-        // Store event for testing
-        self.published_events.lock().await.push(event);
-
-        debug!(topic = %topic, "Event published successfully (mock)");
-        Ok(())
-    }
-
-    async fn publish_batch(&self, events: Vec<ContentEvent>) -> EventResult<()> {
-        for event in events {
-            self.publish_event(event).await?;
-        }
-        Ok(())
-    }
-
-    async fn health_check(&self) -> EventResult<bool> {
-        // Mock producer is always healthy
-        Ok(true)
-    }
-}
-
-/// Kafka event producer with retry logic and delivery confirmation
-pub struct KafkaEventProducer {
-    config: KafkaConfig,
-    // Note: In production, this would hold an actual rdkafka FutureProducer
-    // For now, we use the mock implementation as a placeholder
-    inner: Arc<dyn EventProducer>,
-}
-
-impl KafkaEventProducer {
-    /// Creates a new Kafka event producer from environment configuration
-    pub fn from_env() -> EventResult<Self> {
-        let config = KafkaConfig::from_env()?;
-        Self::new(config)
-    }
-
-    /// Creates a new Kafka event producer with the given configuration
-    pub fn new(config: KafkaConfig) -> EventResult<Self> {
-        info!(
-            brokers = %config.brokers,
-            topic_prefix = %config.topic_prefix,
-            "Initializing Kafka event producer"
-        );
-
-        // In production, this would initialize rdkafka FutureProducer:
-        // let producer: FutureProducer = ClientConfig::new()
-        //     .set("bootstrap.servers", &config.brokers)
-        //     .set("message.timeout.ms", config.message_timeout_ms.to_string())
-        //     .set("request.timeout.ms", config.request_timeout_ms.to_string())
-        //     .set("enable.idempotence", config.enable_idempotence.to_string())
-        //     .create()
-        //     .map_err(|e| EventError::ConfigError(e.to_string()))?;
-
-        // For now, use mock implementation
-        let inner = Arc::new(MockEventProducer::new(config.clone()));
-
-        Ok(Self { config, inner })
-    }
-
-    /// Publishes an event with automatic retry logic
-    pub async fn publish_event(&self, event: ContentEvent) -> EventResult<()> {
-        let mut retries = 0;
-
-        loop {
-            match self.publish_with_confirmation(&event).await {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    retries += 1;
-
-                    if retries >= MAX_RETRIES {
-                        error!(
-                            content_id = %event.content_id(),
-                            event_type = %event.event_type(),
-                            retries = retries,
-                            error = %e,
-                            "Failed to publish event after max retries"
-                        );
-                        return Err(e);
-                    }
-
-                    let delay = Duration::from_millis(BASE_RETRY_DELAY_MS * 2u64.pow(retries - 1));
-
-                    warn!(
-                        content_id = %event.content_id(),
-                        event_type = %event.event_type(),
-                        retry = retries,
-                        delay_ms = delay.as_millis(),
-                        error = %e,
-                        "Retrying event publication"
-                    );
-
-                    sleep(delay).await;
-                }
-            }
-        }
-    }
-
-    /// Internal method to publish with delivery confirmation
-    async fn publish_with_confirmation(&self, event: &ContentEvent) -> EventResult<()> {
-        let topic = self.config.topic_for_event(event.event_type());
-
-        // Serialize event to JSON
-        let payload =
-            serde_json::to_string(event).map_err(|e| EventError::SerializationError(e))?;
-
-        info!(
-            content_id = %event.content_id(),
-            event_type = %event.event_type(),
-            correlation_id = %event.correlation_id(),
-            topic = %topic,
-            payload_size = payload.len(),
-            "Publishing event to Kafka"
-        );
-
-        // In production, this would use rdkafka:
-        // let delivery_status = producer
-        //     .send(
-        //         FutureRecord::to(&topic)
-        //             .payload(&payload)
-        //             .key(&event.content_id().to_string()),
-        //         Duration::from_millis(self.config.message_timeout_ms),
-        //     )
-        //     .await;
-        //
-        // match delivery_status {
-        //     Ok((partition, offset)) => {
-        //         debug!(
-        //             topic = %topic,
-        //             partition = partition,
-        //             offset = offset,
-        //             "Event delivered successfully"
-        //         );
-        //         Ok(())
-        //     }
-        //     Err((e, _)) => Err(EventError::DeliveryFailed(e.to_string())),
-        // }
-
-        // Use inner producer (currently mock)
-        self.inner.publish_event(event.clone()).await
-    }
-
-    /// Publishes multiple events in a batch
-    pub async fn publish_batch(&self, events: Vec<ContentEvent>) -> EventResult<()> {
-        info!(count = events.len(), "Publishing event batch");
-
-        for event in events {
-            self.publish_event(event).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Checks broker connectivity and health
-    pub async fn health_check(&self) -> EventResult<bool> {
-        // In production, this would check Kafka broker metadata:
-        // let metadata = producer
-        //     .client()
-        //     .fetch_metadata(None, Duration::from_secs(5))
-        //     .map_err(|e| EventError::BrokerUnavailable(e.to_string()))?;
-        //
-        // Ok(!metadata.brokers().is_empty())
-
-        self.inner.health_check().await
     }
 }
 
@@ -614,7 +411,6 @@ mod tests {
 
     #[test]
     fn test_kafka_config_from_env() {
-        // Set test environment variables
         env::set_var("KAFKA_BROKERS", "broker1:9092,broker2:9092");
         env::set_var("KAFKA_TOPIC_PREFIX", "test-prefix");
 
@@ -623,7 +419,6 @@ mod tests {
         assert_eq!(config.brokers, "broker1:9092,broker2:9092");
         assert_eq!(config.topic_prefix, "test-prefix");
 
-        // Clean up
         env::remove_var("KAFKA_BROKERS");
         env::remove_var("KAFKA_TOPIC_PREFIX");
     }

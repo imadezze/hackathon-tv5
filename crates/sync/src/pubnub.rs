@@ -9,7 +9,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
 /// PubNub client configuration

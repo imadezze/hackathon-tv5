@@ -9,10 +9,8 @@
 /// - GET /api/v1/devices - List user devices
 /// - POST /api/v1/devices/handoff - Device handoff
 use crate::crdt::{HybridLogicalClock, PlaybackState};
-use crate::device::{DeviceHandoff, DeviceInfo, DeviceRegistry, RemoteCommand};
-use crate::sync::{
-    ProgressSync, ProgressUpdate, WatchlistOperation, WatchlistSync, WatchlistUpdate,
-};
+use crate::device::{DeviceHandoff, DeviceRegistry};
+use crate::sync::{ProgressSync, WatchlistSync};
 use crate::websocket::SyncWebSocket;
 use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
 use actix_web_actors::ws;
@@ -218,7 +216,7 @@ async fn device_handoff(
 
 /// Request/Response types
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WatchlistSyncRequest {
     pub operation: String,
     pub content_id: String,
@@ -232,7 +230,7 @@ pub struct WatchlistSyncResponse {
     pub timestamp: crate::crdt::HLCTimestamp,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProgressSyncRequest {
     pub content_id: String,
     pub position_seconds: u32,

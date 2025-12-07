@@ -2,7 +2,7 @@
 ///
 /// Tracks playback position with last-writer-wins conflict resolution
 use crate::crdt::{HLCTimestamp, HybridLogicalClock, PlaybackPosition, PlaybackState};
-use crate::sync::publisher::{PublisherError, SyncPublisher};
+use crate::sync::publisher::SyncPublisher;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

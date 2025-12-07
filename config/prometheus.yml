@@ -5,6 +5,12 @@ global:
     cluster: 'media-gateway-local'
     environment: 'development'
 
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 # Alert rule files
 rule_files:
   - /etc/prometheus/alerts.yml

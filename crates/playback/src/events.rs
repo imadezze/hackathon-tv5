@@ -13,7 +13,6 @@ use media_gateway_core::{
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 

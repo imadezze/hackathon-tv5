@@ -2,10 +2,11 @@
 //!
 //! These tests use a real PostgreSQL database connection
 
+mod common;
+
 use actix_web::{test, web, App};
-use media_gateway_playback::continue_watching::{
-    ContinueWatchingService, MockContentMetadataProvider, SyncServiceClient,
-};
+use common::MockContentMetadataProvider;
+use media_gateway_playback::continue_watching::{ContinueWatchingService, SyncServiceClient};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;

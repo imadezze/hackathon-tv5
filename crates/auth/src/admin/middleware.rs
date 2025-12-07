@@ -1,9 +1,5 @@
 use crate::{
-    error::{AuthError, Result},
-    jwt::JwtManager,
-    middleware::UserContext,
-    rbac::Role,
-    session::SessionManager,
+    error::AuthError, jwt::JwtManager, middleware::UserContext, rbac::Role, session::SessionManager,
 };
 use actix_web::{
     dev::{Service, ServiceRequest, ServiceResponse, Transform},

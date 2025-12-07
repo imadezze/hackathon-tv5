@@ -2,7 +2,7 @@ use crate::{
     admin::{
         delete_user, get_audit_logs, get_user_detail, impersonate_user, list_users, update_user,
     },
-    api_keys::{ApiKey, ApiKeyManager, CreateApiKeyRequest},
+    api_keys::{ApiKeyManager, CreateApiKeyRequest},
     error::{AuthError, Result},
     jwt::JwtManager,
     mfa::MfaManager,
@@ -10,7 +10,7 @@ use crate::{
     oauth::{
         device::{DeviceAuthorizationResponse, DeviceCode},
         handlers::{apple_authorize, apple_callback, google_authorize, google_callback},
-        pkce::{AuthorizationCode, PkceChallenge},
+        pkce::PkceChallenge,
         OAuthConfig, OAuthManager,
     },
     parental::{update_parental_controls, verify_parental_pin, ParentalControlsState},
@@ -30,7 +30,6 @@ use crate::{
     scopes::ScopeManager,
     session::SessionManager,
     storage::AuthStorage,
-    token::TokenManager,
     token_family::TokenFamilyManager,
     user::{login, register, PasswordHasher, PostgresUserRepository, UserHandlerState},
 };

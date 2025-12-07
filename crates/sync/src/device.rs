@@ -130,12 +130,14 @@ pub enum DeviceType {
     Desktop,
 }
 
+// Allow non-camel-case for iOS which follows Apple's official capitalization
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DevicePlatform {
     Tizen,
     WebOS,
     Android,
-    iOS,
+    iOS, // Apple's official capitalization
     Web,
     Windows,
     MacOS,
@@ -164,13 +166,15 @@ pub struct DeviceCapabilities {
     pub screen_size: Option<f32>,
 }
 
+// Allow non-camel-case for industry-standard resolution names (UHD_4K, UHD_8K)
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VideoResolution {
     SD,
     HD,
     FHD,
-    UHD_4K,
-    UHD_8K,
+    UHD_4K, // Industry-standard naming for 4K resolution
+    UHD_8K, // Industry-standard naming for 8K resolution
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,11 +185,13 @@ pub enum HDRFormat {
     HDR10Plus,
 }
 
+// Allow non-camel-case for industry-standard audio codec names (DTS_X)
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AudioCodec {
     AAC,
     DolbyAtmos,
-    DTS_X,
+    DTS_X, // DTS:X official branding with underscore
     TrueHD,
     AC3,
 }

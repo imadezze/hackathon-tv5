@@ -3,7 +3,6 @@ use media_gateway_core::audit::{AuditAction, AuditEvent, AuditLogger, PostgresAu
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]

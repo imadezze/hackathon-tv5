@@ -10,13 +10,11 @@
 //! - Integration with CanonicalContent and embedding pipeline
 
 use crate::{normalizer::CanonicalContent, IngestionError, Result};
-use qdrant_client::{
-    prelude::*,
-    qdrant::{
-        vectors_config::Config, CreateCollection, Distance, PointStruct, UpsertPoints,
-        Value as QdrantValue, VectorParams, VectorsConfig,
-    },
+use qdrant_client::qdrant::{
+    vectors_config::Config, CreateCollection, Distance, PointStruct, UpsertPoints,
+    Value as QdrantValue, VectorParams, VectorsConfig,
 };
+use qdrant_client::Qdrant as QdrantClientImpl;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
@@ -30,7 +28,7 @@ const MAX_BATCH_SIZE: usize = 100;
 
 /// Qdrant client for managing vector operations
 pub struct QdrantClient {
-    client: qdrant_client::client::QdrantClient,
+    client: QdrantClientImpl,
     collection_name: String,
 }
 
@@ -82,11 +80,9 @@ impl QdrantClient {
     /// # }
     /// ```
     pub async fn new(url: &str, collection: &str) -> Result<Self> {
-        let client = qdrant_client::client::QdrantClient::from_url(url)
-            .build()
-            .map_err(|e| {
-                IngestionError::ConfigError(format!("Failed to create Qdrant client: {}", e))
-            })?;
+        let client = QdrantClientImpl::from_url(url).build().map_err(|e| {
+            IngestionError::ConfigError(format!("Failed to create Qdrant client: {}", e))
+        })?;
 
         info!("Connected to Qdrant at {}", url);
 
@@ -146,7 +142,7 @@ impl QdrantClient {
         );
 
         self.client
-            .create_collection(&CreateCollection {
+            .create_collection(CreateCollection {
                 collection_name: self.collection_name.clone(),
                 vectors_config: Some(VectorsConfig {
                     config: Some(Config::Params(VectorParams {
@@ -184,7 +180,11 @@ impl QdrantClient {
         let point = self.create_point_struct(id, vector, payload)?;
 
         self.client
-            .upsert_points_blocking(&self.collection_name, None, vec![point], None)
+            .upsert_points(UpsertPoints {
+                collection_name: self.collection_name.clone(),
+                points: vec![point],
+                ..Default::default()
+            })
             .await
             .map_err(|e| IngestionError::DatabaseError(format!("Failed to upsert point: {}", e)))?;
 
@@ -224,7 +224,11 @@ impl QdrantClient {
             .collect::<Result<Vec<_>>>()?;
 
         self.client
-            .upsert_points_blocking(&self.collection_name, None, point_structs.clone(), None)
+            .upsert_points(UpsertPoints {
+                collection_name: self.collection_name.clone(),
+                points: point_structs.clone(),
+                ..Default::default()
+            })
             .await
             .map_err(|e| IngestionError::DatabaseError(format!("Failed to upsert batch: {}", e)))?;
 
@@ -297,7 +301,7 @@ impl QdrantClient {
     ) -> Result<Vec<(Uuid, f32)>> {
         let search_result = self
             .client
-            .search_points(&qdrant_client::qdrant::SearchPoints {
+            .search_points(qdrant_client::qdrant::SearchPoints {
                 collection_name: self.collection_name.clone(),
                 vector: query_vector,
                 limit,

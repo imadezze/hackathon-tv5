@@ -1,4 +1,4 @@
-use super::service::{EmailError, Result};
+use super::service::Result;
 
 pub struct EmailTemplate {
     pub subject: String,

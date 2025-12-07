@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::future::{ready, Ready};
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use crate::middleware::auth::UserContext;

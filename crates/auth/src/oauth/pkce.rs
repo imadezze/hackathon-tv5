@@ -43,7 +43,7 @@ impl PkceChallenge {
     }
 
     /// Create S256 challenge: BASE64URL(SHA256(code_verifier))
-    fn create_s256_challenge(verifier: &str) -> String {
+    pub(crate) fn create_s256_challenge(verifier: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(verifier.as_bytes());
         let result = hasher.finalize();

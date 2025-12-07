@@ -1,11 +1,5 @@
-/// Offline-First Sync Queue with SQLite Persistence
-///
-/// Provides a persistent queue for sync operations with FIFO ordering,
-/// automatic reconnection handling, and CRDT merge conflict resolution.
-use crate::crdt::HLCTimestamp;
 use crate::sync::publisher::{MessagePayload, PublisherError, SyncMessage, SyncPublisher};
-use async_trait::async_trait;
-use rusqlite::{params, Connection, Result as SqliteResult};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;

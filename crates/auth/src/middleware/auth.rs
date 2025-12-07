@@ -201,6 +201,7 @@ mod tests {
             exp: 0,
             jti: "jti123".to_string(),
             token_type: "access".to_string(),
+            token_family_id: None,
         };
 
         let context = UserContext::from_claims(&claims);

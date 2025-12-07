@@ -4,12 +4,11 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::crdt::{ORSet, PlaybackPosition};
 use crate::device::DeviceInfo;
 use crate::repository::SyncRepository;
-use crate::sync::{ProgressSync, WatchlistSync};
 
 /// Persistence manager for sync service
 pub struct SyncPersistence {

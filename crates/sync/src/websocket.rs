@@ -57,20 +57,23 @@ impl SyncWebSocket {
 
     /// Start heartbeat process
     fn start_heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            // Check if client has sent heartbeat recently
-            if Instant::now().duration_since(act.hb) > CLIENT_TIMEOUT {
-                tracing::warn!(
-                    "WebSocket client {} heartbeat timeout, disconnecting",
-                    act.device_id
-                );
-                ctx.stop();
-                return;
-            }
+        ctx.run_interval(
+            HEARTBEAT_INTERVAL,
+            |act, ctx: &mut ws::WebsocketContext<Self>| {
+                // Check if client has sent heartbeat recently
+                if Instant::now().duration_since(act.hb) > CLIENT_TIMEOUT {
+                    tracing::warn!(
+                        "WebSocket client {} heartbeat timeout, disconnecting",
+                        act.device_id
+                    );
+                    ctx.stop();
+                    return;
+                }
 
-            // Send ping to client
-            ctx.ping(b"");
-        });
+                // Send ping to client
+                ctx.ping(b"");
+            },
+        );
     }
 
     /// Handle incoming sync message
@@ -178,16 +181,18 @@ impl Handler<crate::ws::BroadcastMessage> for SyncWebSocket {
         ctx: &mut Self::Context,
     ) -> Self::Result {
         // Send JSON message to WebSocket client
-        ctx.text(msg.0);
+        use actix_web_actors::ws::WebsocketContext;
+        WebsocketContext::text(ctx, msg.0);
     }
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SyncWebSocket {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        use actix_web_actors::ws::WebsocketContext;
         match msg {
             Ok(ws::Message::Ping(msg)) => {
                 self.hb = Instant::now();
-                ctx.pong(&msg);
+                WebsocketContext::pong(ctx, &msg);
             }
             Ok(ws::Message::Pong(_)) => {
                 self.hb = Instant::now();
@@ -206,7 +211,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SyncWebSocket {
             }
             Ok(ws::Message::Close(reason)) => {
                 tracing::info!("WebSocket close received: {:?}", reason);
-                ctx.close(reason);
+                WebsocketContext::close(ctx, reason);
                 ctx.stop();
             }
             Ok(ws::Message::Continuation(_)) => {

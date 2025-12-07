@@ -40,9 +40,23 @@ pub async fn run_cleanup_task(service: Arc<ContinueWatchingService>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::continue_watching::{ContinueWatchingService, MockContentMetadataProvider};
+    use crate::continue_watching::{ContentMetadataProvider, ContinueWatchingService};
     use sqlx::postgres::PgPoolOptions;
     use uuid::Uuid;
+
+    /// Mock content metadata provider for testing
+    struct MockContentMetadataProvider;
+
+    #[async_trait::async_trait]
+    impl ContentMetadataProvider for MockContentMetadataProvider {
+        async fn get_content_title(
+            &self,
+            content_id: Uuid,
+            platform: &str,
+        ) -> Result<String, String> {
+            Ok(format!("Content {} on {}", content_id, platform))
+        }
+    }
 
     async fn setup_test_db() -> sqlx::PgPool {
         let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {

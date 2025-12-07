@@ -2,12 +2,11 @@ use crate::{
     email::{EmailError, EmailManager},
     error::{AuthError, Result},
     jwt::JwtManager,
-    middleware::extract_user_context,
     session::SessionManager,
     storage::AuthStorage,
-    user::{CreateUserRequest, PostgresUserRepository, UserRepository},
+    user::{PostgresUserRepository, UserRepository},
 };
-use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
+use actix_web::{post, web, HttpResponse, Responder};
 use media_gateway_core::{
     ActivityEventType, KafkaActivityProducer, UserActivityEvent, UserActivityProducer,
 };
@@ -344,7 +343,7 @@ mod tests {
             email_config.base_url.clone(),
             email_config.from_name.clone(),
         ));
-        let email_manager = EmailManager::new(provider, redis, email_config);
+        let email_manager = EmailManager::new(provider, redis, email_config).await;
 
         // First send succeeds
         let result1 = email_manager

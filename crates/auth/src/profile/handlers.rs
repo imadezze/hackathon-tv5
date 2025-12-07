@@ -1,8 +1,6 @@
 use crate::error::{AuthError, Result};
 use crate::middleware::extract_user_context;
-use crate::profile::{
-    storage::ProfileStorage, types::*, AvatarUploadResponse, UpdateProfileRequest, UserProfile,
-};
+use crate::profile::{storage::ProfileStorage, AvatarUploadResponse, UpdateProfileRequest};
 use actix_multipart::Multipart;
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse, Responder};
 use futures_util::StreamExt;

@@ -9,16 +9,15 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::{
     protocol::{
-        error_codes, InitializeParams, InitializeResult, JsonRpcError, JsonRpcRequest,
-        JsonRpcResponse, Prompt, PromptArgument, PromptListResult, PromptParams, PromptsCapability,
-        RequestId, ResourceListResult, ResourceParams, ResourcesCapability, ServerCapabilities,
-        ServerInfo, ToolCallResult, ToolListResult, ToolParams, ToolsCapability, JSONRPC_VERSION,
-        MCP_VERSION,
+        InitializeParams, InitializeResult, JsonRpcError, JsonRpcRequest, JsonRpcResponse, Prompt,
+        PromptArgument, PromptListResult, PromptParams, PromptsCapability, RequestId,
+        ResourceListResult, ResourceParams, ResourcesCapability, ServerCapabilities, ServerInfo,
+        ToolListResult, ToolParams, ToolsCapability, MCP_VERSION,
     },
     resources::ResourceManager,
     tools::ToolExecutor,

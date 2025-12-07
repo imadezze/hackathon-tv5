@@ -55,16 +55,6 @@ pub trait ContentMetadataProvider: Send + Sync {
     async fn get_content_title(&self, content_id: Uuid, platform: &str) -> Result<String, String>;
 }
 
-/// Mock content metadata provider for testing
-pub struct MockContentMetadataProvider;
-
-#[async_trait::async_trait]
-impl ContentMetadataProvider for MockContentMetadataProvider {
-    async fn get_content_title(&self, content_id: Uuid, platform: &str) -> Result<String, String> {
-        Ok(format!("Content {} on {}", content_id, platform))
-    }
-}
-
 /// HTTP-based content metadata provider
 pub struct HttpContentMetadataProvider {
     http_client: reqwest::Client,
@@ -286,6 +276,20 @@ impl actix_web::ResponseError for ContinueWatchingError {
 mod tests {
     use super::*;
     use sqlx::postgres::PgPoolOptions;
+
+    /// Mock content metadata provider for testing
+    pub struct MockContentMetadataProvider;
+
+    #[async_trait::async_trait]
+    impl ContentMetadataProvider for MockContentMetadataProvider {
+        async fn get_content_title(
+            &self,
+            content_id: Uuid,
+            platform: &str,
+        ) -> Result<String, String> {
+            Ok(format!("Content {} on {}", content_id, platform))
+        }
+    }
 
     async fn setup_test_db() -> PgPool {
         let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {

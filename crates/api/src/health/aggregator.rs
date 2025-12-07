@@ -316,7 +316,6 @@ impl HealthAggregator {
             return Err(anyhow::anyhow!("Redis URL not configured"));
         }
 
-        use redis::AsyncCommands;
         let client = redis::Client::open(url)?;
         let mut conn = client.get_multiplexed_async_connection().await?;
         redis::cmd("PING")

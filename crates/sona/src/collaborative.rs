@@ -5,13 +5,13 @@
 
 use crate::matrix_factorization::{ALSConfig, MatrixFactorization, SparseMatrix};
 use anyhow::{Context, Result};
-use qdrant_client::prelude::*;
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::{
-    CreateCollection, Distance, PointStruct, SearchPoints, Value as QdrantValue, VectorParams,
-    VectorsConfig,
+    CreateCollection, Distance, PointStruct, SearchPoints, UpsertPointsBuilder,
+    Value as QdrantValue, VectorParams, VectorsConfig,
 };
 use qdrant_client::Payload;
+use qdrant_client::Qdrant;
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -69,14 +69,14 @@ pub struct Interaction {
 /// Collaborative Filtering Engine
 pub struct CollaborativeFilteringEngine {
     pool: PgPool,
-    qdrant: QdrantClient,
+    qdrant: Qdrant,
     als_config: ALSConfig,
     model: Option<MatrixFactorization>,
     incremental_buffer: Vec<Interaction>,
 }
 
 impl CollaborativeFilteringEngine {
-    pub fn new(pool: PgPool, qdrant: QdrantClient) -> Self {
+    pub fn new(pool: PgPool, qdrant: Qdrant) -> Self {
         Self {
             pool,
             qdrant,
@@ -97,7 +97,7 @@ impl CollaborativeFilteringEngine {
 
         // Create user embeddings collection
         self.qdrant
-            .create_collection(&CreateCollection {
+            .create_collection(CreateCollection {
                 collection_name: USER_EMBEDDINGS_COLLECTION.to_string(),
                 vectors_config: Some(VectorsConfig {
                     config: Some(Config::Params(VectorParams {
@@ -113,7 +113,7 @@ impl CollaborativeFilteringEngine {
 
         // Create item embeddings collection
         self.qdrant
-            .create_collection(&CreateCollection {
+            .create_collection(CreateCollection {
                 collection_name: ITEM_EMBEDDINGS_COLLECTION.to_string(),
                 vectors_config: Some(VectorsConfig {
                     config: Some(Config::Params(VectorParams {
@@ -240,7 +240,10 @@ impl CollaborativeFilteringEngine {
 
         if !user_points.is_empty() {
             self.qdrant
-                .upsert_points_blocking(USER_EMBEDDINGS_COLLECTION, None, user_points, None)
+                .upsert_points(UpsertPointsBuilder::new(
+                    USER_EMBEDDINGS_COLLECTION,
+                    user_points,
+                ))
                 .await?;
         }
 
@@ -259,7 +262,10 @@ impl CollaborativeFilteringEngine {
 
         if !item_points.is_empty() {
             self.qdrant
-                .upsert_points_blocking(ITEM_EMBEDDINGS_COLLECTION, None, item_points, None)
+                .upsert_points(UpsertPointsBuilder::new(
+                    ITEM_EMBEDDINGS_COLLECTION,
+                    item_points,
+                ))
                 .await?;
         }
 
@@ -277,7 +283,7 @@ impl CollaborativeFilteringEngine {
 
         let search_result = self
             .qdrant
-            .search_points(&SearchPoints {
+            .search_points(SearchPoints {
                 collection_name: USER_EMBEDDINGS_COLLECTION.to_string(),
                 vector: user_embedding,
                 limit: (k + 1) as u64, // +1 to exclude self
@@ -314,7 +320,7 @@ impl CollaborativeFilteringEngine {
 
         let search_result = self
             .qdrant
-            .search_points(&SearchPoints {
+            .search_points(SearchPoints {
                 collection_name: ITEM_EMBEDDINGS_COLLECTION.to_string(),
                 vector: item_embedding,
                 limit: (k + 1) as u64, // +1 to exclude self
@@ -473,9 +479,7 @@ mod tests {
     #[test]
     fn test_build_user_item_matrix() {
         let pool = unsafe { std::mem::zeroed() };
-        let qdrant = QdrantClient::from_url("http://localhost:6334")
-            .build()
-            .unwrap();
+        let qdrant = Qdrant::from_url("http://localhost:6334").build().unwrap();
         let engine = CollaborativeFilteringEngine::new(pool, qdrant);
 
         let user1 = Uuid::new_v4();
@@ -519,9 +523,7 @@ mod tests {
     #[test]
     fn test_incremental_buffer() {
         let pool = unsafe { std::mem::zeroed() };
-        let qdrant = QdrantClient::from_url("http://localhost:6334")
-            .build()
-            .unwrap();
+        let qdrant = Qdrant::from_url("http://localhost:6334").build().unwrap();
         let mut engine = CollaborativeFilteringEngine::new(pool, qdrant);
 
         let interaction = Interaction {

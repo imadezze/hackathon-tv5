@@ -2,8 +2,6 @@ use crate::{
     error::{AuthError, Result},
     jwt::JwtManager,
     middleware::extract_user_context,
-    session::SessionManager,
-    storage::AuthStorage,
 };
 use actix_web::{delete, get, patch, post, web, HttpRequest, HttpResponse, Responder};
 use chrono::{DateTime, Utc};

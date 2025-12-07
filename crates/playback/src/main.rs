@@ -13,7 +13,7 @@ mod watch_history;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use continue_watching::{
     ContinueWatchingError, ContinueWatchingService, HttpContentMetadataProvider,
-    MockContentMetadataProvider, ProgressUpdateRequest, SyncServiceClient,
+    ProgressUpdateRequest, SyncServiceClient,
 };
 use serde::Deserialize;
 use session::{
