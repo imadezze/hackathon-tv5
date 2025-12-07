@@ -2,11 +2,11 @@
 
 /**
  * Voice Conversation Component
- * Real-time bidirectional voice conversation with Deepgram Voice Agent
+ * Real-time bidirectional voice conversation with Deepgram Voice Agent (Managed LLM)
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { HybridVoiceAgent, type ConversationMessage } from '@/lib/voice-agent-hybrid';
+import { ManagedVoiceAgent, type ConversationMessage, type AgentState } from '@/lib/voice-agent-managed';
 import type { SearchResult } from '@/types/media';
 
 interface VoiceConversationProps {
@@ -19,34 +19,33 @@ export default function VoiceConversation({ onComplete }: VoiceConversationProps
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [status, setStatus] = useState<string>('Ready to start');
   const [error, setError] = useState<string | null>(null);
-  const [agentSpeaking, setAgentSpeaking] = useState(false);
-  const [userSpeaking, setUserSpeaking] = useState(false);
+  const [agentState, setAgentState] = useState<AgentState>('idle');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
 
-  const agentRef = useRef<HybridVoiceAgent | null>(null);
+  const agentRef = useRef<ManagedVoiceAgent | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const conversationEndRef = useRef<HTMLDivElement>(null);
 
-  const SYSTEM_PROMPT = `You are a friendly media discovery assistant helping users find movies and TV shows they'll love.
+  const SYSTEM_INSTRUCTIONS = `You are a friendly movie and TV show discovery assistant.
 
-Your goal: Have a natural 5-7 question conversation to understand their preferences.
+Your goal: Have a natural 5-7 question conversation to understand viewing preferences.
 
-Ask about (naturally, one at a time):
+Ask about (one at a time, naturally):
 1. What's the last movie or show you really enjoyed? Why?
 2. What mood are you in? (exciting, relaxing, thought-provoking, funny, etc.)
-3. Do you prefer movies or TV shows right now?
-4. Any specific genres you're craving?
-5. Time period preference? (modern, classic, etc.)
-6. Anything you want to avoid?
+3. Do you prefer movies or TV shows?
+4. Favorite genres?
+5. Time period preference?
+6. Anything to avoid?
 7. Watching alone or with someone?
 
 Guidelines:
 - Keep responses under 25 words
 - Ask ONE question at a time
 - Be enthusiastic and conversational
-- After 5-7 questions, say "Perfect! Let me find some great matches for you." and END the conversation
-- Don't be robotic - be natural and friendly
+- After 5-7 exchanges, say "Perfect! Let me find some great matches for you." then say goodbye
+- Don't be robotic - be natural
 
 Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
 
@@ -65,69 +64,42 @@ Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
         throw new Error('Deepgram API key not configured');
       }
 
-      // Create hybrid voice agent
-      const agent = new HybridVoiceAgent({
+      // Create managed voice agent (Deepgram handles STT + LLM + TTS)
+      const agent = new ManagedVoiceAgent({
         apiKey,
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: SYSTEM_INSTRUCTIONS,
         greeting: "Hi! I'm your personal movie and TV show assistant. I'd love to learn what kind of content you enjoy. Ready to chat?",
-        llmModel: 'gemini-2.0-flash-exp',
-        voiceModel: 'aura-asteria-en', // Natural female voice
+        llmProvider: 'open_ai',
+        llmModel: 'gpt-4o-mini',
+        ttsVoice: 'aura-asteria-en',
       });
 
       // Setup event handlers
       agent.on('Ready', () => {
-        console.log('✅ Ready!');
+        console.log('✅ Voice Agent ready!');
         setIsConnected(true);
         setStatus('Ready to talk - Start speaking!');
       });
 
-      agent.on('UserSpeaking', (data) => {
-        setUserSpeaking(true);
-        setStatus(`Listening: "${data.transcript.slice(0, 50)}..."`);
+      agent.on('UserMessage', (data) => {
+        console.log(`👤 User: "${data.text}"`);
       });
 
-      agent.on('UserStoppedSpeaking', (data) => {
-        console.log('🤐 User stopped');
-        setUserSpeaking(false);
-        setStatus('Processing...');
+      agent.on('AgentUtterance', (data) => {
+        console.log(`🤖 Agent: "${data.text}"`);
       });
 
-      agent.on('AgentThinking', () => {
-        console.log('🤔 Agent thinking...');
-        setStatus('Thinking...');
-      });
+      agent.on('AgentStateChange', (data) => {
+        console.log(`🔄 State: ${data.state}`);
+        setAgentState(data.state);
 
-      agent.on('AgentStartedSpeaking', () => {
-        console.log('🗣️ Agent speaking...');
-        setAgentSpeaking(true);
-        setStatus('Speaking...');
-      });
-
-      agent.on('AgentStoppedSpeaking', () => {
-        console.log('🤫 Agent stopped');
-        setAgentSpeaking(false);
-        setStatus('Listening...');
-      });
-
-      agent.on('ConversationText', (data) => {
-        console.log(`💬 ${data.role}: ${data.content}`);
-
-        setConversation(prev => [
-          ...prev,
-          {
-            role: data.role,
-            content: data.content,
-            timestamp: Date.now(),
-          },
-        ]);
-
-        // Check if conversation is ending
-        if (data.role === 'assistant' &&
-            (data.content.toLowerCase().includes('let me find') ||
-             data.content.toLowerCase().includes('great matches'))) {
-          setTimeout(() => {
-            stopConversation();
-          }, 3000);
+        // Update status message based on state
+        if (data.state === 'listening') {
+          setStatus('Listening...');
+        } else if (data.state === 'thinking') {
+          setStatus('Thinking...');
+        } else if (data.state === 'speaking') {
+          setStatus('Speaking...');
         }
       });
 
@@ -138,9 +110,15 @@ Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
       });
 
       agent.on('Close', () => {
-        console.log('👋 Connection closed');
+        console.log('👋 Voice Agent closed');
         setIsConnected(false);
         setStatus('Disconnected');
+
+        // Auto-analyze when conversation ends
+        if (agent.getConversation().length > 0) {
+          setConversation(agent.getConversation());
+          analyzeAndRecommend();
+        }
       });
 
       // Start agent (includes recording)
@@ -300,20 +278,13 @@ Important: After about 5-7 exchanges, wrap up the conversation naturally.`;
               </span>
             </div>
 
-            <div className="flex items-center gap-4">
-              {userSpeaking && (
-                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full animate-ping"></div>
-                  <span className="text-xs font-medium">You're speaking</span>
-                </div>
-              )}
-
-              {agentSpeaking && (
-                <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-ping"></div>
-                  <span className="text-xs font-medium">Agent speaking</span>
-                </div>
-              )}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {agentState === 'listening' && '🎤 Listening'}
+                {agentState === 'thinking' && '🤔 Thinking'}
+                {agentState === 'speaking' && '🗣️ Speaking'}
+                {agentState === 'idle' && '⏸️ Idle'}
+              </span>
             </div>
           </div>
         </div>

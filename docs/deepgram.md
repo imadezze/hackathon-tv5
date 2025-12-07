@@ -1,138 +1,201 @@
-● Perfect! I've successfully implemented a comprehensive voice-based
-preference discovery system. Here's what I've built:
+# Deepgram Voice Agent Implementation
 
-🎤 Voice Discovery System - Complete Implementation
+## Overview
 
-Core Components Created:
+The media discovery app now uses **Deepgram Voice Agent with Managed LLM** for conversational voice interactions. This provides a fully integrated solution where Deepgram handles:
 
-1. Backend Integration (/workspace/apps/media-discovery/src/lib/):
+1. **Speech-to-Text (STT)** - Deepgram Nova-3
+2. **LLM Reasoning** - Google Gemini 2.0 Flash (managed by Deepgram)
+3. **Text-to-Speech (TTS)** - Deepgram Aura Asteria voice
 
--   deepgram-voice.ts - Deepgram Voice Agent integration with sentiment
-    analysis
--   preference-analyzer.ts - AI-powered conversation analysis using
-    Gemini 2.5 Flash
+## Architecture
 
-2. API Endpoints (/workspace/apps/media-discovery/src/app/api/):
+### Previous Approach (Hybrid)
+- Deepgram Live STT → Gemini AI (separate) → Deepgram TTS
+- Required managing LLM calls ourselves
+- More complex state management
 
--   voice-agent/ - Voice Agent WebSocket handler (foundation)
--   voice-preferences/ - Conversation analysis & recommendation engine
+### Current Approach (Managed LLM)
+- **Single WebSocket connection** to Deepgram Voice Agent
+- Deepgram manages the entire conversational chain
+- Simplified implementation with built-in conversation handling
 
-3. Frontend UI (/workspace/apps/media-discovery/src/):
+## Configuration
 
--   VoiceDiscovery.tsx - Interactive voice conversation component
--   app/voice/page.tsx - Voice discovery page
+### API Key
+Set your Deepgram API key in `.env`:
+```bash
+DEEPGRAM_API_KEY=caa9cc44ca956d9c3e2b38a654b6e77b71adf104
+```
 
-4. Documentation:
+### LLM Options
 
--   docs/VOICE_DISCOVERY.md - Complete technical documentation
+**Managed LLM Providers (Fully Managed by Deepgram):**
+- **OpenAI**: GPT-5, GPT-5-mini, GPT-4o, GPT-4o-mini ✅ (currently used)
+- **Anthropic**: Claude Sonnet 4.5, Claude Haiku 4.5
 
-How It Works:
+**Self-Hosted LLM Providers (Require Custom Endpoint):**
+- **Google**: Gemini models (requires Google AI Studio API key)
+- **Groq**: GPT OSS 20B
+- **AWS Bedrock**: Various models
 
-User speaks → 7 Questions → Sentiment Analysis → AI Profile → Top 10
-Recommendations
+**Current Configuration:**
+```typescript
+{
+  llmProvider: 'open_ai',
+  llmModel: 'gpt-4o-mini',
+  ttsVoice: 'aura-asteria-en'
+}
+```
 
-Question Flow:
+## Voice Agent Settings
 
-1. "What's the last movie/show you enjoyed?"
-2. "What mood are you in?" (exciting, relaxing, etc.)
-3. "Movies or TV shows?"
-4. "Favorite genres?"
-5. "Time period preference?"
-6. "Anything to avoid?"
-7. "Watching alone or with others?"
+### Audio Configuration
+- **Input**: Linear16 PCM, 24kHz, mono
+- **Output**: Linear16 PCM, 24kHz
+- **Format**: WebM/Opus for streaming
 
-Sentiment Analysis:
+### Agent Behavior
+```typescript
+agent: {
+  listen: {
+    provider: { type: 'deepgram', model: 'nova-3' },
+  },
+  think: {
+    provider: { type: 'open_ai', model: 'gpt-4o-mini' },
+    prompt: SYSTEM_INSTRUCTIONS,
+  },
+  speak: {
+    provider: { type: 'deepgram', model: 'aura-asteria-en' },
+  },
+  greeting: "Hi! I'm your personal movie and TV show assistant...",
+}
+```
 
--   Records audio chunks during conversation
--   Analyzes emotion from voice (positive/negative/neutral)
--   Scores: -1 (negative) to +1 (positive)
--   Builds engagement profile
+### System Instructions
+The agent follows these guidelines:
+- Ask 5-7 questions about viewing preferences
+- Keep responses under 25 words
+- Be enthusiastic and conversational
+- End naturally after gathering preferences
 
-AI-Powered Recommendations:
+## Implementation Files
 
--   Combines conversation content + sentiment scores
--   Extracts preferences (genres, moods, themes)
--   Generates semantic search query
--   Returns top 10 personalized matches
+### Core Library
+**`src/lib/voice-agent-managed.ts`**
+- `ManagedVoiceAgent` class
+- WebSocket connection management
+- Event handling (Ready, UserMessage, AgentUtterance, etc.)
+- Audio streaming from microphone
+- Keep-alive mechanism (every 5 seconds)
 
-Key Features:
+### UI Component
+**`src/components/VoiceConversation.tsx`**
+- Voice chat interface
+- Real-time conversation display
+- State management (listening, thinking, speaking)
+- Automatic preference analysis on completion
 
-✅ Natural conversation flow with progress tracking
-✅ Sentiment-aware recommendations
-✅ Engagement scoring (response length + sentiment + consistency)
-✅ Profile building (genres, moods, themes, viewing context)
-✅ Smart ranking based on profile fit
+### API Endpoint
+**`src/app/api/voice-preferences/route.ts`**
+- Analyzes conversation transcript
+- Generates preference profile using Gemini
+- Returns personalized recommendations
 
-Cost-Effective:
+## Events
 
--   $0.40 per user session (~5 minutes)
--   Free tier: $200 credits = 500 conversations
--   Efficient models: Nova-3 (STT) + Gemini Flash (analysis)
+The Voice Agent emits these events:
 
-Access the Feature:
+| Event | Description |
+|-------|-------------|
+| `Ready` | Connection established, ready to talk |
+| `Welcome` | Agent connected and initialized |
+| `UserMessage` | User spoke (transcribed text) |
+| `AgentUtterance` | Agent responded (text) |
+| `AgentStateChange` | State changed (listening/thinking/speaking) |
+| `AgentStartedSpeaking` | Agent began TTS playback |
+| `AgentAudioDone` | Agent finished speaking |
+| `Error` | Connection or processing error |
+| `Close` | Connection closed |
 
-Navigate to: http://localhost:3000/voice
+## Usage Flow
 
-Important Notes:
+1. **User clicks "Start Voice Chat"**
+   - Request microphone access
+   - Connect to Deepgram Voice Agent
+   - Start audio streaming
 
-Current Status: Demo mode with text input
+2. **Conversation**
+   - Agent asks questions (5-7 exchanges)
+   - User responds naturally
+   - Real-time transcription and responses
 
--   Full voice implementation requires WebSocket setup
--   Sentiment analysis works on pre-recorded audio only (Deepgram
-    limitation)
--   Text-to-speech uses browser's built-in Speech Synthesis API
+3. **Auto-completion**
+   - After 7 user messages OR agent says goodbye
+   - Connection closes automatically
+   - Analyzes conversation
+   - Generates recommendations
 
-Environment Variables Configured:
-✅ DEEPGRAM_API_KEY - Added to .env
-✅ GOOGLE_GENERATIVE_AI_API_KEY - Already configured
-✅ TMDB_ACCESS_TOKEN - Already configured
+## Pricing
 
-Sources:
+**Deepgram Voice Agent Managed LLM:**
+- **Budget tier** (GPT-4o-mini): ~$0.15-0.25 per conversation ✅ (currently used)
+- **Advanced tier** (GPT-4o, Claude Sonnet 4.5): ~$0.40-0.50 per conversation
+- **Premium tier** (GPT-5): ~$0.60-0.80 per conversation
 
--   https://developers.deepgram.com/docs/voice-agent
--   https://developers.deepgram.com/docs/sentiment-analysis
--   https://deepgram.com/learn/deepgram-launches-voice-agent-api
--   https://deepgram.com/solutions/speech-analytics
+**Breakdown:**
+- STT (Nova-3): ~$0.05 per conversation (5-7 minutes)
+- LLM (GPT-4o-mini): ~$0.05-0.15 per conversation
+- TTS (Aura): ~$0.05 per conversation
 
-Next Steps:
+## Testing
 
-1. Test locally: Visit /voice page and try the text-based demo
-2. Deploy to Cloud Run: All files ready for deployment
-3. Implement full WebSocket: For production voice streaming
-4. Add real-time STT: Connect Deepgram streaming transcription
+Navigate to: `http://localhost:3000/voice`
 
-The system is ready to use! The voice discovery feature will
-dramatically improve user experience by understanding not just what
-users say, but how they feel about content, delivering
-hyper-personalized recommendations in under 2 minutes. 🚀
+1. Click "Start Voice Chat"
+2. Allow microphone access
+3. Have a natural conversation
+4. Agent will ask about preferences
+5. View personalized recommendations
 
-● Fixed! I've successfully cleaned up the voice agent implementation by:
+## Troubleshooting
 
-Changes Made
+### Common Issues
 
-1. Removed the non-existent deepgram-react package from package.json -
-   this package exists on GitHub but is not published to npm
-2. Reverted to the working hybrid implementation:
+**"WebSocket connection failed"**
+- Check Deepgram API key in `.env`
+- Verify API key has Voice Agent access
+- Check browser console for detailed errors
 
+**"No response from agent"**
+- Check browser microphone permissions
+- Verify audio input device is working
+- Look for errors in browser console
 
-    - Using VoiceConversation.tsx component (working)
-    - Using voice-agent-hybrid.ts library (Deepgram STT + Gemini AI +
+**"Audio playback not working"**
+- Check browser audio permissions
+- Verify speakers/headphones connected
+- Try refreshing the page
 
-Deepgram TTS) - Removed the broken VoiceAgent.tsx component 3. Fixed TypeScript type errors: - Corrected SearchResult property access (changed rec.posterPath to
-rec.content.posterPath, etc.) - Moved UserResponse type definition to preference-analyzer.ts - Updated imports in voice-preferences API route 4. Cleaned up unused files: - Removed voice-agent-client.ts (failed WebSocket approach) - Removed deepgram-voice.ts (old implementation) - Removed VoiceDiscovery.tsx (old component) - Removed voice-agent/route.ts (WebSocket API endpoint)
+### Debug Logging
 
-Current Status
+Enable verbose logging in browser console:
+```javascript
+// All agent events are logged with emoji prefixes:
+// ✅ = Connection success
+// 👋 = Welcome/greeting
+// 👤 = User message
+// 🤖 = Agent response
+// 🔄 = State change
+// ❌ = Error
+// 💓 = Keep-alive ping
+```
 
-✅ All TypeScript errors resolved - build passes successfully
+## Next Steps
 
-The hybrid voice agent at
-/workspace/apps/media-discovery/src/components/VoiceConversation.tsx:1
-is now ready for testing. It uses:
-
--   Deepgram Live Transcription (Nova-2) for speech-to-text
--   Google Gemini 2.0 Flash for conversational AI responses
--   Deepgram TTS (Aura Asteria voice) for natural speech output
-
-You can now test the voice conversation feature at
-http://localhost:3000/voice - it will ask 5-7 questions about your
-preferences and then generate personalized recommendations!
+- [ ] Test voice conversation locally
+- [ ] Fine-tune system instructions for better questions
+- [ ] Add conversation history persistence
+- [ ] Implement voice settings (speed, pitch)
+- [ ] Add support for multiple languages
+- [ ] Deploy to Google Cloud Run
