@@ -102,6 +102,11 @@ const nextConfig: NextConfig = {
     '@ruvector/sona-linux-arm64-gnu',
     '@ruvector/sona-win32-x64-msvc',
   ],
+
+  // Environment variables for client-side
+  env: {
+    NEXT_PUBLIC_DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
+  },
 };
 
 export default nextConfig;
